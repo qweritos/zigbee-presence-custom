@@ -22,7 +22,12 @@ network credentials, stock firmware and detailed deployment logs are private.
 | Control with HA unavailable | PASS, HA Python process and supervisor watchdog suspended; process state and API timeout checked |
 | Reset, three On/Off cycles and delayed-Off cancellation while HA unavailable | PASS |
 | Actual OTA version 1 to version 2 | PASS; new firmware executed and answered direct actuator-state queries |
-| Production OTA version 2 to version 3, diagnostic mailbox omitted | In progress |
+| Production OTA version 2 to version 3, diagnostic mailbox omitted | PASS; installed version and complete application readback match |
+| Production routes real MCU integer reports to the actuator | PASS, two complete On/Off cycles; original MCU sensitivity restored |
+| ZHA reconfiguration preserves exact peer control bindings | PASS, one source EP1 to actuator EP1 binding; EP2–4 have none |
+| Final production reset and restored occupancy mapping | PASS, fresh MCU DP1 report and matching actuator state; extra routes disabled |
+| Factory USERDATA and DEVINFO | PASS, unchanged against verified stock backups; original IEEE retained |
+| Stock HFXO calibration | PASS, CTUNE160 read back live |
 | Optional MCU LED state/control confirmation | Unconfirmed; MCU did not report DP101 |
 
 Input transitions for the control tests were injected through the SWD diagnostic
@@ -31,6 +36,21 @@ Actual MCU DP1 reports were also decoded and observed driving the relay after
 the real input mapping was restored. Actuator state was read from the actual
 Zigbee endpoint; visual lamp state and a person walking into/out of a room were
 not the test method.
+
+The production build has no diagnostic injection mailbox. Its additional live
+test temporarily mapped actual MCU sensitivity reports to On/Off, changed the
+sensitivity twice in each direction, and verified the actuator after each MCU
+report. The original sensitivity and DP1 occupancy mapping were then restored.
+After the final radio-only reset, a valid occupancy sample arrived later than
+the initial 30-second check. Until such a report, the bridge deliberately keeps
+the input unknown and sends no forced Off. The final fresh sample and actuator
+state agreed.
+
+The installed production application is 286660 bytes; its SHA256 is
+`fce22a0e1cb42b665e4b4ade4844576367b035b13197d60665697d49848648a9`.
+Both generic and initial radar profiles build as version 3. The deployed profile
+is the radar variant; the generic profile has not been installed on another
+product as part of this acceptance.
 
 The replaced HA automation was disabled throughout acceptance tests. During
 the outage test, the HA application could not execute and its HTTP API timed

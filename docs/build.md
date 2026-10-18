@@ -4,10 +4,10 @@ External Linux x86_64 dependencies used during development:
 
 | Tool | Version | Archive SHA256 |
 | --- | --- | --- |
-| Silicon Labs Simplicity SDK | 2025.6.2 | `463021f42ab1b4eeb1ca69660d3e8fccda4db76bd95b9cccec2c2bcba87550de` |
-| Arm GNU Toolchain | 12.3.Rel1 | `12a2815644318ebcceaf84beabb665d0924b6e79e21048452c5331a56332b309` |
-| ZAP | 2025.10.23 | `bf7d4b388ee6b82ef5813fd9a2ed19c8b18039195d708add6122a5377a152d22` |
-| SLC CLI | 5.7.0.0 | `eb2a0bec554e394b0278b702ee9d8f63b43f44ee2e416af72bf32215ce9d436d` |
+| [Silicon Labs Simplicity SDK](https://github.com/SiliconLabs/simplicity_sdk/releases/download/v2025.6.2/simplicity-sdk.zip) | 2025.6.2 | `463021f42ab1b4eeb1ca69660d3e8fccda4db76bd95b9cccec2c2bcba87550de` |
+| [Arm GNU Toolchain](https://developer.arm.com/-/media/Files/downloads/gnu/12.3.rel1/binrel/arm-gnu-toolchain-12.3.rel1-x86_64-arm-none-eabi.tar.xz) | 12.3.Rel1 | `12a2815644318ebcceaf84beabb665d0924b6e79e21048452c5331a56332b309` |
+| [ZAP](https://github.com/project-chip/zap/releases/download/v2025.10.23/zap-linux-x64.zip) | 2025.10.23 | `bf7d4b388ee6b82ef5813fd9a2ed19c8b18039195d708add6122a5377a152d22` |
+| [SLC CLI (Edge Impulse mirror)](https://cdn.edgeimpulse.com/build-system/slc_cli_linux.zip) | 5.7.0.0 | `eb2a0bec554e394b0278b702ee9d8f63b43f44ee2e416af72bf32215ce9d436d` |
 
 Install Java 21, make, Python 3, and a host C compiler. Extract external tools
 into a directory with `sdk/`, `gcc/arm-gnu-toolchain-12.3.rel1-x86_64-arm-none-eabi/`,
@@ -15,8 +15,8 @@ into a directory with `sdk/`, `gcc/arm-gnu-toolchain-12.3.rel1-x86_64-arm-none-e
 
 ```
 make test
-python3 scripts/build.py --tools /path/to/tools --profile generic --force-generation
-python3 scripts/build.py --tools /path/to/tools --profile ztc6ggyl --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile generic --version 3 --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile ztc6ggyl --version 3 --force-generation
 python3 scripts/build.py --tools /path/to/tools --bootloader --force-generation
 python3 scripts/build_loader.py --tools /path/to/tools
 ```

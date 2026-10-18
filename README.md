@@ -7,7 +7,8 @@ on the radio, including its optional off delay, without Home Assistant automatio
 
 **Experimental:** direct control, timers, independent endpoints, persistence and
 operation with HA suspended have passed on the initial hardware profile. Actual
-OTA version 1 → 2 has passed; production version 3 is undergoing final acceptance.
+OTA updates 1 → 2 → 3 passed; production version 3 is installed and its complete
+application readback matches the build. The factory identity is preserved.
 See the precise methods and limits in [validation](docs/validation.md).
 
 Four independent routes support boolean, enum, unsigned integer or bitmap
