@@ -2,7 +2,7 @@
 
 ## Presence firmware naming, defaults and pairing
 
-The project is now `zigbee-presence-firmware`; the supported models table lists
+The project is now `zigbee-presence-custom`; the supported models table lists
 only ZY-M100. The ZY-M100 build uses manufacturer `www.andrey.wtf`, model
 `ZY-M100`; the factory hardware IEEE remains unchanged. The only supported
 build profile is `zy-m100`. Earlier generic build results below are historical

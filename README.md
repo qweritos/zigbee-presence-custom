@@ -1,4 +1,6 @@
-# Zigbee presence firmware
+# zigbee-presence-custom
+
+Custom firmware for Zigbee radar presence sensors.
 
 **Lux-gated direct Zigbee binding** is the primary feature: the presence sensor
 decides locally when to turn bound lights on and off, using occupancy and a
