@@ -10,19 +10,33 @@ import shutil
 import struct
 import subprocess
 import sys
+from version import release_version
 
 ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--tools', type=Path, default=Path(os.environ.get('BRIDGE_TOOLS', ROOT / '.tools')))
-    p.add_argument('--profile', choices=['zy-m100'], default='zy-m100')
+    models = json.loads((ROOT / 'config/models.json').read_text())
+    p.add_argument('--profile', choices=list(models), default='zy-m100')
     p.add_argument('--force-generation', action='store_true', help='Diagnostic SLC override; does not bypass compilation')
     p.add_argument('--generate-only', action='store_true')
     p.add_argument('--debug-swd', action='store_true', help='Include RAM-only pairing/test mailbox')
-    p.add_argument('--version', type=int, default=1, help='Monotonic Zigbee OTA version (uint32)')
+    p.add_argument('--version', type=int, help='Development Zigbee OTA version (uint32)')
+    p.add_argument('--release-version', help='Semantic release version, e.g. 0.0.1')
     p.add_argument('--bootloader', action='store_true', help='Build the initial wired-conversion bootloader')
     args = p.parse_args()
+    parts = None
+    if args.release_version:
+        try:
+            parts, encoded = release_version(args.release_version)
+        except ValueError as e:
+            p.error(str(e))
+        if args.version is not None and args.version != encoded:
+            p.error('--version conflicts with --release-version')
+        args.version = encoded
+    elif args.version is None:
+        args.version = 1
     if not 1 <= args.version <= 0xffffffff:
         p.error('--version must be 1..4294967295')
     tools = args.tools.resolve()
@@ -78,6 +92,9 @@ def main():
         text += '  - name: BRIDGE_PROFILE_ZY_M100\n    value: "1"\n'
     if args.debug_swd:
         text += '  - name: BRIDGE_ENABLE_DEBUG\n    value: "1"\n'
+    if parts:
+        for name, value in zip(('MAJOR', 'MINOR', 'PATCH'), parts):
+            text += f'  - name: BRIDGE_RELEASE_{name}\n    value: "{value}"\n'
     text=text.replace('FIRMWARE_VERSION, value: 1}',f'FIRMWARE_VERSION, value: {args.version}'+'}')
     text=text.replace('SL_APPLICATION_VERSION, value: 1}',f'SL_APPLICATION_VERSION, value: {args.version}'+'}')
     project = out/'bridge.slcp'
@@ -137,7 +154,7 @@ def main():
     for file in [elf,binary,out/'ota/bridge.gbl',ota]:
         artifacts.append({'file':str(file.relative_to(ROOT)),'sha256':hashlib.sha256(file.read_bytes()).hexdigest()})
     (out/'build-manifest.json').write_text(json.dumps({'profile':args.profile,'sdk':'2025.6.2',
-        'version':args.version,'debug_swd':args.debug_swd,
+        'version':args.version,'release_version':args.release_version,'debug_swd':args.debug_swd,
         'sdk_patches':{'ota_cached_image_size':hashlib.sha256(patched.read_bytes()).hexdigest()},
         'generation_forced':args.force_generation,'artifacts':artifacts},indent=2)+'\n')
     print('Build complete. This script never flashes hardware.')

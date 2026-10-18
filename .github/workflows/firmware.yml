@@ -1,0 +1,118 @@
+name: Firmware and releases
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - '.github/workflows/firmware.yml'
+      - 'config/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'quirks/**'
+      - 'Makefile'
+      - 'VERSION'
+  pull_request:
+    paths:
+      - '.github/workflows/firmware.yml'
+      - 'config/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'quirks/**'
+      - 'Makefile'
+      - 'VERSION'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      profiles: ${{ steps.metadata.outputs.profiles }}
+      version: ${{ steps.metadata.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: make test
+      - id: metadata
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          args=()
+          if [[ "$REF_TYPE" == tag ]]; then args=(--tag "$REF_NAME"); fi
+          python3 scripts/release.py metadata "${args[@]}" > metadata.json
+          echo "profiles=$(jq -c .profiles metadata.json)" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r .version metadata.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(needs.prepare.outputs.profiles) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .tools
+          key: linux-x64-tools-${{ hashFiles('config/tools.json', 'scripts/install_tools.py') }}
+      - name: Install pinned tools
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_21_X64" >> "$GITHUB_ENV"
+          python3 scripts/install_tools.py
+      - name: Build production application, bootloader and RAM loader
+        env:
+          PROFILE: ${{ matrix.profile }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python3 scripts/build.py --profile "$PROFILE" --release-version "$RELEASE_VERSION" --force-generation
+          python3 tests/sdk_ota_size_check.py "build/$PROFILE/patches/ota-client.c"
+          python3 scripts/build.py --bootloader --force-generation
+          python3 scripts/build_loader.py --tools .tools
+          python3 scripts/release.py stage --profile "$PROFILE" --output "dist/$PROFILE" --repository "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: firmware-${{ matrix.profile }}
+          path: dist/${{ matrix.profile }}/
+          if-no-files-found: error
+      - name: Build logs
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: logs-${{ matrix.profile }}
+          path: build/**/*.log
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: firmware-*
+          path: release
+          merge-multiple: true
+      - run: python3 scripts/release.py collect --directory release
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "$RELEASE_VERSION" --notes-file docs/release-notes.md
+          gh release upload "$RELEASE_TAG" release/*
+          gh release edit "$RELEASE_TAG" --draft=false --latest

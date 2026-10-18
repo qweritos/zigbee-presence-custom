@@ -30,7 +30,7 @@ Other models and board variants need separate validation. The factory IEEE and o
 
 ## Get started
 
-[Build and test](docs/build.md) · [Flash and recover](docs/hardware.md) · [Configure and bind](docs/configuration.md) · [Validation](docs/validation.md)
+[Download firmware](https://github.com/qweritos/zigbee-presence-custom/releases/latest) · [Build](docs/build.md) · [Flash](docs/hardware.md) · [Configure and bind](docs/configuration.md) · [Validation](docs/validation.md)
 
 Experimental firmware. Current OTA images are unsigned and unencrypted.
 [MIT license](LICENSE) · [Upstream attribution and SDK licensing](NOTICE)

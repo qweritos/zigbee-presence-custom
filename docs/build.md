@@ -12,10 +12,13 @@ External Linux x86_64 dependencies used during development:
 Install Java 21, make, Python 3, and a host C compiler. Extract external tools
 into a directory with `sdk/`, `gcc/arm-gnu-toolchain-12.3.rel1-x86_64-arm-none-eabi/`,
 `zap/zap-cli`, and `slc/slc_cli/slc`. Set `JAVA_HOME` to Java 21.
+Alternatively, `python3 scripts/install_tools.py` downloads and verifies these
+tools into `.tools/`. See [release CI and versioning](releasing.md).
 
 ```
 make test
 python3 scripts/build.py --tools /path/to/tools --profile zy-m100 --version 9 --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile zy-m100 --release-version 0.0.1 --force-generation
 python3 scripts/build.py --tools /path/to/tools --bootloader --force-generation
 python3 scripts/build_loader.py --tools /path/to/tools
 python3 tests/sdk_ota_size_check.py build/zy-m100/patches/ota-client.c

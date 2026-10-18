@@ -37,7 +37,14 @@ static uint32_t now_ms(void) {return sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_
 static uint8_t zcl_version=8, app_version=1, stack_version=2, hw_version=1, power_source=4;
 static uint8_t manufacturer[]="\0www.andrey.wtf";
 static uint8_t model[]="\0ZY-M100";
-static uint8_t sw_build[]="\x05" "0.3.0";
+#define STRINGIFY_INNER(x) #x
+#define STRINGIFY(x) STRINGIFY_INNER(x)
+#ifdef BRIDGE_RELEASE_MAJOR
+static uint8_t sw_build[]="\0" STRINGIFY(BRIDGE_RELEASE_MAJOR) "."
+    STRINGIFY(BRIDGE_RELEASE_MINOR) "." STRINGIFY(BRIDGE_RELEASE_PATCH);
+#else
+static uint8_t sw_build[]="\0dev";
+#endif
 static uint16_t revision=1;
 static uint32_t tx_queued, tx_delivered, tx_failed, serial_tx_dropped, nvm_failed, dp_reports, version_rejected;
 static uint8_t last_dp, last_type, mcu_version, pid_seen;
@@ -324,8 +331,7 @@ uint8_t bridge_attribute_write(uint8_t ep,uint16_t cluster,uint16_t attr,const u
 void bridge_init(void) {
     manufacturer[0]=strlen((char *)manufacturer+1);
     model[0]=strlen((char *)model+1);
-    /* Hex escapes must be separated from following numeric text. */
-    sw_build[0]=5;
+    sw_build[0]=sizeof(sw_build)-2;
 #ifdef BRIDGE_PROFILE_ZY_M100
     illuminance_dp=104;
     radar_desired=radar_settings_defaults();
