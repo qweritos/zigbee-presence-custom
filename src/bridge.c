@@ -22,7 +22,7 @@
 static bridge_route routes[BRIDGE_ROUTE_COUNT];
 static hal_zigbee_endpoint endpoints[BRIDGE_ROUTE_COUNT];
 static hal_zigbee_cluster clusters[BRIDGE_ROUTE_COUNT][8];
-static hal_zigbee_attribute route_attrs[BRIDGE_ROUTE_COUNT][11];
+static hal_zigbee_attribute route_attrs[BRIDGE_ROUTE_COUNT][12];
 static hal_zigbee_attribute occupancy_attrs[BRIDGE_ROUTE_COUNT][3];
 static uint8_t occupancy[BRIDGE_ROUTE_COUNT], known[BRIDGE_ROUTE_COUNT];
 /* A mapped MCU input does not establish a PIR/ultrasonic sensing technology. */
@@ -39,7 +39,7 @@ static uint8_t model[]="\0TuyaMCU-Bridge-ZTC6";
 #else
 static uint8_t model[]="\0TuyaMCU-Bridge";
 #endif
-static uint8_t sw_build[]="\x05" "0.1.0";
+static uint8_t sw_build[]="\x05" "0.2.0";
 static uint16_t revision=1;
 static uint32_t tx_queued, tx_delivered, tx_failed, serial_tx_dropped, nvm_failed, dp_reports, version_rejected;
 static uint8_t last_dp, last_type, mcu_version, pid_seen;
@@ -137,6 +137,12 @@ static void on_dp(void *ctx,uint8_t dp,uint8_t type,const uint8_t *v,size_t n) {
     for (size_t j=0;j<n && j<4;j++) value=(value<<8)|v[j];
     last_dp=dp;last_type=type;last_value=value;dp_reports++;
     uint32_t now=now_ms();
+    if (dp && dp==illuminance_dp && type==2 && n==4) {
+        for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++)
+            occupancy_illuminance(&routes[i].control,true,value,now);
+        uint16_t measured=value?(uint16_t)fminf(65534.0f,10000.0f*log10f((float)value)+1.0f):0;
+        if (illuminance!=measured) {illuminance=measured;change(1,0x0400,0);}
+    }
     for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++) {
         bool old_known=routes[i].control.known;
         bool old_state=routes[i].control.occupied;
@@ -144,10 +150,6 @@ static void on_dp(void *ctx,uint8_t dp,uint8_t type,const uint8_t *v,size_t n) {
         known[i]=routes[i].control.known;
         occupancy[i]=routes[i].control.occupied;
         if (old_known!=known[i] || old_state!=occupancy[i]) change(i+1,0x0406,0);
-    }
-    if (dp && dp==illuminance_dp && type==2 && n==4) {
-        uint16_t measured=value?(uint16_t)fminf(65534.0f,10000.0f*log10f((float)value)+1.0f):0;
-        if (illuminance!=measured) {illuminance=measured;change(1,0x0400,0);}
     }
 #ifdef BRIDGE_PROFILE_ZTC6GGYL
     for (unsigned j=0;j<ARRAY_SIZE(radar_dp);j++) {
@@ -269,6 +271,7 @@ uint8_t bridge_attribute_write(uint8_t ep,uint16_t cluster,uint16_t attr,const u
         case 3:dest=&c.active_value;expected=4;break;
         case 4:dest=&c.clear_value;expected=4;break;
         case 5:dest=&c.off_delay_seconds;expected=2;break;
+        case 6:dest=&c.on_lux_threshold;expected=2;break;
         default:return SL_ZIGBEE_ZCL_STATUS_READ_ONLY;
         }
         if (size!=expected) return SL_ZIGBEE_ZCL_STATUS_INVALID_DATA_TYPE;
@@ -287,6 +290,8 @@ uint8_t bridge_attribute_write(uint8_t ep,uint16_t cluster,uint16_t attr,const u
             nvm_failed++;return SL_ZIGBEE_ZCL_STATUS_FAILURE;
         }
         illuminance=0xffff;
+        for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++)
+            occupancy_illuminance(&routes[i].control,false,0,now_ms());
         return SL_ZIGBEE_ZCL_STATUS_SUCCESS;
     }
 #ifdef BRIDGE_PROFILE_ZTC6GGYL
@@ -317,6 +322,16 @@ void bridge_init(void) {
     illuminance_dp=104;
 #endif
     nvm3_readData(nvm3_defaultHandle,GLOBAL_KEY,&illuminance_dp,1);
+    /* Migrate the former multi-endpoint layout without touching EP1 or network tokens. */
+    for (unsigned i=1;i<4;i++) {
+        Ecode_t result=nvm3_deleteObject(nvm3_defaultHandle,ROUTE_KEY+i);
+        if (result!=ECODE_NVM3_OK && result!=ECODE_NVM3_ERR_KEY_NOT_FOUND) nvm_failed++;
+    }
+    for (uint8_t j=0;j<SL_ZIGBEE_BINDING_TABLE_SIZE;j++) {
+        sl_zigbee_binding_table_entry_t b;
+        if (sl_zigbee_get_binding(j,&b)==SL_STATUS_OK && b.type!=SL_ZIGBEE_UNUSED_BINDING &&
+            b.local>=2 && b.local<=4 && sl_zigbee_delete_binding(j)!=SL_STATUS_OK) nvm_failed++;
+    }
     memcpy(all_diag_attrs,diag_attrs,sizeof(diag_attrs));
     memcpy(all_diag_attrs+ARRAY_SIZE(diag_attrs),uart_attrs,sizeof(uart_attrs));
     for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++) {
@@ -333,6 +348,7 @@ void bridge_init(void) {
             ATTR(0,0x10,ATTR_WRITABLE,&r->enabled),ATTR(1,0x20,ATTR_WRITABLE,&r->dp),
             ATTR(2,0x30,ATTR_WRITABLE,&r->type),ATTR(3,0x23,ATTR_WRITABLE,&r->active_value),
             ATTR(4,0x23,ATTR_WRITABLE,&r->clear_value),ATTR(5,0x21,ATTR_WRITABLE,&r->off_delay_seconds),
+            ATTR(6,0x21,ATTR_WRITABLE,&r->on_lux_threshold),
             ATTR(0x10,0x23,ATTR_READONLY,&routes[i].input_value),ATTR(0x11,0x10,ATTR_READONLY,&known[i]),
             ATTR(0x12,0x20,ATTR_READONLY,&binding_count[i]),
             ATTR(0x13,0x23,ATTR_READONLY,&routes[i].matched_reports),

@@ -253,30 +253,6 @@
       "endpointId": 1,
       "networkId": 0,
       "parentEndpointIdentifier": null
-    },
-    {
-      "endpointTypeName": "Anonymous Endpoint Type",
-      "endpointTypeIndex": 0,
-      "profileId": 260,
-      "endpointId": 2,
-      "networkId": 0,
-      "parentEndpointIdentifier": null
-    },
-    {
-      "endpointTypeName": "Anonymous Endpoint Type",
-      "endpointTypeIndex": 0,
-      "profileId": 260,
-      "endpointId": 3,
-      "networkId": 0,
-      "parentEndpointIdentifier": null
-    },
-    {
-      "endpointTypeName": "Anonymous Endpoint Type",
-      "endpointTypeIndex": 0,
-      "profileId": 260,
-      "endpointId": 4,
-      "networkId": 0,
-      "parentEndpointIdentifier": null
     }
   ]
 }

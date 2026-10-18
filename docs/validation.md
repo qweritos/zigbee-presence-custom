@@ -1,4 +1,20 @@
-# Initial hardware validation
+# Hardware validation
+
+## Single-endpoint illuminance revision (v5)
+
+The current firmware exposes only source endpoint1. The On illuminance threshold
+defaults to0 (bypass); nonzero values block On only above the configured lux.
+Once On is accepted, later brightness cannot turn it off. The original EP1
+configuration migrates with a zero limit; retired endpoint2–4 configuration and
+bindings are removed.
+
+Host ASan/UBSan tests pass for above/equal/below-threshold input, unknown lux,
+zero bypass, feedback latching, delayed-Off cancellation, mapping/enable changes,
+and version1/version2 settings decoding. Both generic and radar production
+profiles build as v5 with one generated endpoint. OTA and real-MCU hardware
+acceptance for this revision are in progress.
+
+## Initial v3 deployment
 
 Target: ZY-M100-v1.3, `_TZE204_ztc6ggyl`, ZS3L with
 EFR32MG21A020F768IM32 (768 KiB flash, 64 KiB RAM). Target actuator:

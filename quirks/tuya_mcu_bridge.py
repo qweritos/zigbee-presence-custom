@@ -36,6 +36,7 @@ class RouteCluster(CustomCluster):
         active_value = foundation.ZCLAttributeDef(id=3, type=t.uint32_t, access="rw", is_manufacturer_specific=False)
         clear_value = foundation.ZCLAttributeDef(id=4, type=t.uint32_t, access="rw", is_manufacturer_specific=False)
         off_delay = foundation.ZCLAttributeDef(id=5, type=t.uint16_t, access="rw", is_manufacturer_specific=False)
+        on_lux_threshold = foundation.ZCLAttributeDef(id=6, type=t.uint16_t, access="rw", is_manufacturer_specific=False)
         input_value = foundation.ZCLAttributeDef(id=0x10, type=t.uint32_t, access="r", is_manufacturer_specific=False)
         input_known = foundation.ZCLAttributeDef(id=0x11, type=t.Bool, access="r", is_manufacturer_specific=False)
         binding_count = foundation.ZCLAttributeDef(id=0x12, type=t.uint8_t, access="r", is_manufacturer_specific=False)
@@ -94,13 +95,16 @@ class Ztc6RadarCluster(CustomCluster):
 
 def build_quirk(model: str, radar: bool = False):
     builder = QuirkBuilder("OpenZigbee-MCU", model).replaces(DiagnosticsCluster)
-    for ep in range(1, 5):
+    for ep in (1,):
         builder.replaces(RouteCluster, endpoint_id=ep)
         builder.replaces(DirectOnOffClient, endpoint_id=ep, cluster_type=ClusterType.Client)
+        # This client sends actuator commands; it is not a contact/opening sensor.
+        builder.prevent_default_entity_creation(endpoint_id=ep, cluster_id=OnOff.cluster_id,
+                                               cluster_type=ClusterType.Client)
         builder.switch("enabled", RouteCluster.cluster_id, endpoint_id=ep,
-                       fallback_name=f"Route {ep} enabled", translation_key="route_enabled")
+                       fallback_name="Direct control enabled", translation_key="route_enabled")
         builder.enum("datapoint_type", DatapointType, RouteCluster.cluster_id, endpoint_id=ep,
-                     fallback_name=f"Route {ep} DP type", translation_key="route_datapoint_type")
+                     fallback_name="Input DP type", translation_key="route_datapoint_type")
         for attr, maximum, label in [
             ("datapoint", 255, "datapoint"),
             ("active_value", 4294967295, "active value"),
@@ -109,11 +113,14 @@ def build_quirk(model: str, radar: bool = False):
             builder.number(attr, RouteCluster.cluster_id, endpoint_id=ep,
                            min_value=0, max_value=maximum, step=1,
                            unit="s" if attr == "off_delay" else None,
-                           fallback_name=f"Route {ep} {label}", translation_key=f"route_{attr}")
+                           fallback_name=f"Input {label}" if attr != "off_delay" else "Off delay", translation_key=f"route_{attr}")
+        builder.number("on_lux_threshold", RouteCluster.cluster_id, endpoint_id=ep,
+                       min_value=0, max_value=65535, step=1, unit="lx",
+                       fallback_name="On illuminance threshold", translation_key="on_lux_threshold")
         for attr in ["input_value", "binding_count", "matched_reports", "ignored_values"]:
             builder.sensor(attr, RouteCluster.cluster_id, endpoint_id=ep,
                            entity_type=EntityType.DIAGNOSTIC, initially_disabled=True,
-                           fallback_name=f"Route {ep} {attr.replace('_', ' ')}", translation_key=f"route_{attr}")
+                           fallback_name=attr.replace('_', ' ').capitalize(), translation_key=f"route_{attr}")
     builder.number("illuminance_datapoint", DiagnosticsCluster.cluster_id, min_value=0,
                    max_value=255, step=1, fallback_name="Illuminance datapoint", translation_key="illuminance_datapoint")
     for attr in ["frames", "bad_checksums", "queued_commands", "delivered_commands",

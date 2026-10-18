@@ -45,12 +45,28 @@ int main(void) {
     route_config_encode(&c,serialized);
     assert(route_config_decode(&restored,serialized,sizeof(serialized)));
     assert(restored.active_value==0x12345678 && restored.clear_value==42 && restored.off_delay_seconds==65535);
-    serialized[0]=2;assert(!route_config_decode(&restored,serialized,sizeof(serialized)));
+    assert(serialized[0]==2 && restored.on_lux_threshold==0);
+    c.on_lux_threshold=12345;route_config_encode(&c,serialized);
+    assert(route_config_decode(&restored,serialized,sizeof(serialized)) && restored.on_lux_threshold==12345);
+    serialized[0]=3;assert(!route_config_decode(&restored,serialized,sizeof(serialized)));
     serialized[0]=1;serialized[15]=1;assert(!route_config_decode(&restored,serialized,sizeof(serialized)));
+    serialized[14]=serialized[15]=0;
+    assert(route_config_decode(&restored,serialized,sizeof(serialized)) && restored.on_lux_threshold==0);
     c.enabled=2;assert(!route_config_valid(&c));c.enabled=1;
     c.dp=0;assert(!route_config_valid(&c));c.dp=8;
     c.type=1;assert(!route_config_valid(&c));
     c.active_value=1;c.clear_value=1;assert(!route_config_valid(&c));
+    /* Enabling and setting a limit atomically cannot leak an unfiltered On. */
+    c=(route_config){.enabled=0,.dp=1,.type=4,.active_value=1};
+    route_init(&a,&c);
+    occupancy_illuminance(&a.control,true,500,0);
+    route_report(&a,1,4,&one,1,0);
+    c.enabled=1;c.on_lux_threshold=100;
+    assert(route_configure(&a,&c,1) && !a.control.tx_pending);
+    c.dp=2;
+    assert(route_configure(&a,&c,2) && a.control.lux_known && a.control.lux==500);
+    route_report(&a,2,4,&one,1,3);assert(!a.control.tx_pending);
+    occupancy_illuminance(&a.control,true,100,4);assert(a.control.tx_pending);
     /* APS delivery failures retry a queued state at most three times. */
     occupancy_control control;occupancy_init(&control,true,0);
     occupancy_presence(&control,true,0);

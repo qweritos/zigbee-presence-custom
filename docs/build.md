@@ -15,8 +15,8 @@ into a directory with `sdk/`, `gcc/arm-gnu-toolchain-12.3.rel1-x86_64-arm-none-e
 
 ```
 make test
-python3 scripts/build.py --tools /path/to/tools --profile generic --version 3 --force-generation
-python3 scripts/build.py --tools /path/to/tools --profile ztc6ggyl --version 3 --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile generic --version 5 --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile ztc6ggyl --version 5 --force-generation
 python3 scripts/build.py --tools /path/to/tools --bootloader --force-generation
 python3 scripts/build_loader.py --tools /path/to/tools
 ```

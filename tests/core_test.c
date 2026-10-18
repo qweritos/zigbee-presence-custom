@@ -123,8 +123,53 @@ static void control_tests(void) {
     occupancy_tick(&c,1000,send_command,&s); assert(s.count == 1);
     occupancy_tick(&c,2100,send_command,&s); assert(s.count == 2 && !s.values[1]);
 }
+static void illuminance_tests(void) {
+    occupancy_control c;
+    sent_commands s={.succeed=true};
+    occupancy_init(&c,true,0);
+    occupancy_lux_limit(&c,100,0);
+    occupancy_presence(&c,true,1); /* Threshold waits for a known lux input. */
+    occupancy_tick(&c,1,send_command,&s);assert(s.count==0);
+    occupancy_resync(&c,2);
+    occupancy_tick(&c,2,send_command,&s);assert(s.count==0);
+    occupancy_illuminance(&c,true,101,3);
+    occupancy_tick(&c,3,send_command,&s);assert(s.count==0);
+    occupancy_illuminance(&c,true,100,4); /* Equal to the threshold is allowed. */
+    occupancy_tick(&c,4,send_command,&s);assert(s.count==1 && s.values[0]);
+    occupancy_illuminance(&c,true,5000,5); /* The lamp cannot turn itself Off. */
+    occupancy_presence(&c,true,6);
+    occupancy_tick(&c,6,send_command,&s);assert(s.count==1);
+    occupancy_lux_limit(&c,1,7);
+    occupancy_tick(&c,7,send_command,&s);assert(s.count==1);
+    occupancy_presence(&c,false,8);
+    occupancy_tick(&c,8,send_command,&s);assert(s.count==2 && !s.values[1]);
+    occupancy_presence(&c,true,9);occupancy_tick(&c,9,send_command,&s);
+    assert(s.count==2); /* New occupancy is blocked while bright. */
+    occupancy_lux_limit(&c,0,10); /* Zero bypasses even unknown/bright lux. */
+    occupancy_tick(&c,10,send_command,&s);assert(s.count==3 && s.values[2]);
+    occupancy_init(&c,true,2);s.count=0;
+    occupancy_lux_limit(&c,100,0);occupancy_illuminance(&c,true,10,0);
+    occupancy_presence(&c,true,0);occupancy_tick(&c,0,send_command,&s);
+    occupancy_illuminance(&c,true,5000,1);
+    occupancy_presence(&c,false,100);
+    occupancy_presence(&c,true,200); /* Keep On when cancelling delayed Off. */
+    occupancy_tick(&c,200,send_command,&s);assert(s.count==2 && s.values[1]);
+    occupancy_tick(&c,2100,send_command,&s);assert(s.count==2);
+    occupancy_presence(&c,false,2200);
+    occupancy_tick(&c,4200,send_command,&s);assert(s.count==3 && !s.values[2]);
+    occupancy_presence(&c,true,4300);occupancy_tick(&c,4300,send_command,&s);
+    assert(s.count==3);
+    occupancy_enable(&c,false,4400);
+    occupancy_illuminance(&c,true,10,4500);occupancy_tick(&c,4500,send_command,&s);
+    assert(s.count==3);
+    occupancy_enable(&c,true,4600);occupancy_tick(&c,4600,send_command,&s);
+    assert(s.count==4 && s.values[3]);
+    occupancy_init(&c,true,0);s.count=0;
+    occupancy_presence(&c,true,0);occupancy_tick(&c,0,send_command,&s);
+    assert(s.count==1 && s.values[0]); /* Default zero needs no lux report. */
+}
 int main(void) {
-    protocol_tests(); control_tests();
+    protocol_tests(); control_tests(); illuminance_tests();
     puts("PASS: UART framing/checksums/resynchronization/fuzz; atomic DP decoding; occupancy timing/retries/enable/wraparound");
     return 0;
 }

@@ -17,17 +17,23 @@ void route_init(bridge_route *r, const route_config *c) {
     memset(r, 0, sizeof(*r));
     r->config = *c;
     occupancy_init(&r->control, c->enabled, c->off_delay_seconds);
+    occupancy_lux_limit(&r->control, c->on_lux_threshold, 0);
 }
 bool route_configure(bridge_route *r, const route_config *c, uint32_t now) {
     if (!route_config_valid(c)) return false;
     const route_config *old = &r->config;
     if (old->dp != c->dp || old->type != c->type || old->active_value != c->active_value || old->clear_value != c->clear_value) {
         /* A report for the old mapping cannot establish the new mapping's state. */
+        bool lux_known = r->control.lux_known;
+        uint32_t lux = r->control.lux;
         occupancy_init(&r->control, c->enabled, c->off_delay_seconds);
+        occupancy_illuminance(&r->control, lux_known, lux, now);
     } else {
         occupancy_delay(&r->control, c->off_delay_seconds, now);
+        occupancy_lux_limit(&r->control, c->on_lux_threshold, now);
         occupancy_enable(&r->control, c->enabled, now);
     }
+    occupancy_lux_limit(&r->control, c->on_lux_threshold, now);
     r->config = *c;
     return true;
 }
@@ -46,17 +52,20 @@ void route_report(bridge_route *r, uint8_t dp, uint8_t type, const uint8_t *v, s
 void route_config_encode(const route_config *c, uint8_t out[BRIDGE_CONFIG_SIZE]) {
     /* Explicit versioned wire format, independent of compiler padding/endian. */
     memset(out, 0, BRIDGE_CONFIG_SIZE);
-    out[0] = 1; out[1] = c->enabled; out[2] = c->dp; out[3] = c->type;
+    out[0] = 2; out[1] = c->enabled; out[2] = c->dp; out[3] = c->type;
     out[4] = c->off_delay_seconds; out[5] = c->off_delay_seconds >> 8;
     for (unsigned i = 0; i < 4; i++) {
         out[6+i] = c->active_value >> (8*i);
         out[10+i] = c->clear_value >> (8*i);
     }
+    out[14] = c->on_lux_threshold; out[15] = c->on_lux_threshold >> 8;
 }
 bool route_config_decode(route_config *c, const uint8_t *in, size_t n) {
-    if (n != BRIDGE_CONFIG_SIZE || in[0] != 1 || in[14] || in[15]) return false;
+    if (n != BRIDGE_CONFIG_SIZE || (in[0] != 1 && in[0] != 2) ||
+        (in[0] == 1 && (in[14] || in[15]))) return false;
     route_config x = {.enabled=in[1], .dp=in[2], .type=in[3],
                       .off_delay_seconds=(uint16_t)(in[4] | ((uint16_t)in[5] << 8))};
+    if (in[0] == 2) x.on_lux_threshold = (uint16_t)(in[14] | ((uint16_t)in[15] << 8));
     for (unsigned i = 0; i < 4; i++) {
         x.active_value |= (uint32_t)in[6+i] << (8*i);
         x.clear_value |= (uint32_t)in[10+i] << (8*i);

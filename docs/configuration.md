@@ -1,11 +1,11 @@
 # Configuration
 
-Endpoints 1–4 are fixed logical source endpoints. Each has an On/Off client
+Endpoint 1 has an On/Off client
 `0x0006`, Occupancy Sensing server `0x0406`, and settings server `0xFC10`.
 Endpoint 1 also has Basic, illuminance, diagnostics and OTA clusters. The
 radar profile adds `0xFC20` for settings forwarded to its original MCU.
 
-Route settings (`0xFC10` on the source endpoint):
+Control settings (`0xFC10` on endpoint 1):
 
 | Attribute | Type | Meaning |
 | --- | --- | --- |
@@ -15,6 +15,7 @@ Route settings (`0xFC10` on the source endpoint):
 | `0x0003` | uint32 | Value that sends On |
 | `0x0004` | uint32 | Value that sends Off |
 | `0x0005` | uint16 | Off delay in seconds, 0–65535 |
+| `0x0006` | uint16 | On illuminance threshold, 0–65535 lux; 0 disables the limit |
 | `0x0010` | uint32 | Last matching input value |
 | `0x0011` | boolean | Input state known |
 | `0x0012` | uint8 | Number of On/Off unicast bindings |
@@ -28,10 +29,19 @@ action. Changing a mapping discards its old state until a fresh valid report.
 An initial unknown state never sends Off. Enabling a route resynchronizes a
 known input; disabling it cancels pending commands without forcing Off.
 
+The On illuminance threshold defaults to **0**, which permits On without a lux
+report. A nonzero limit permits On only when a known lux reading is at or below
+the value. While occupied and blocked, a later qualifying lux report can permit
+On. Once accepted, On stays latched until occupancy clears and any Off delay
+expires; brightness from the lamp cannot turn it off. Renewed occupancy during
+the delay retains On. A nonzero limit with unknown lux waits for a valid report.
+The limit affects On only; it never suppresses occupancy-driven Off. Select the
+correct illuminance datapoint before using a nonzero limit.
+
 Create a **standard ZDO unicast binding** with:
 
 - source IEEE: the bridge's factory IEEE
-- source endpoint: selected route, 1–4
+- source endpoint: 1
 - cluster: `0x0006`
 - destination IEEE: target actuator
 - destination endpoint: the actuator's actual On/Off server endpoint
@@ -47,7 +57,7 @@ can express the intended mapping explicitly, for example on
 `zigbee2mqtt/bridge/request/device/bind`:
 
 ```json
-{"from":"bridge","from_endpoint":2,"to":"actuator","to_endpoint":1,"clusters":["genOnOff"]}
+{"from":"bridge","from_endpoint":1,"to":"actuator","to_endpoint":1,"clusters":["genOnOff"]}
 ```
 
 This documents the protocol mapping; Zigbee2MQTT integration has not been
@@ -80,3 +90,8 @@ establish the resulting value. No extra detection/fading parameters are invented
 The initial MCU did not report DP101 after an LED write, so its LED state remains
 unknown; that optional control has no confirmed hardware acceptance. The range
 and sensitivity settings are read from actual MCU reports rather than guessed defaults.
+
+Upgrading from the earlier four-endpoint firmware preserves endpoint1 settings
+and bindings, defaults its new lux limit to0, and deletes retired endpoint2–4
+settings and bindings. Reinterview the device after upgrading and remove the
+retired entities from the HA registry. The current quirk exposes only endpoint1.

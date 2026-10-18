@@ -6,10 +6,26 @@ static bool due(uint32_t now, uint32_t deadline) {
 }
 static void queue(occupancy_control *c, bool on, uint32_t now) {
     c->desired_on = on;
+    c->on_latched = on;
     c->desired_known = true;
     c->tx_pending = c->enabled;
     c->attempts = 0;
     c->next_tx = now;
+}
+static void try_on(occupancy_control *c, uint32_t now) {
+    if (!c->enabled || !c->known || !c->occupied || c->on_latched) return;
+    if (!c->on_lux_threshold || (c->lux_known && c->lux <= c->on_lux_threshold))
+        queue(c, true, now);
+}
+void occupancy_lux_limit(occupancy_control *c, uint16_t lux, uint32_t now) {
+    c->on_lux_threshold = lux;
+    try_on(c, now);
+}
+void occupancy_illuminance(occupancy_control *c, bool known, uint32_t lux, uint32_t now) {
+    c->lux_known = known;
+    c->lux = lux;
+    /* Once On is accepted, the lamp's own light cannot reverse the decision. */
+    try_on(c, now);
 }
 void occupancy_init(occupancy_control *c, bool enabled, uint16_t delay) {
     memset(c, 0, sizeof(*c));
@@ -22,7 +38,8 @@ void occupancy_presence(occupancy_control *c, bool occupied, uint32_t now) {
     c->occupied = occupied;
     c->off_pending = false;
     if (occupied) {
-        queue(c, true, now);
+        if (c->on_latched) queue(c, true, now); /* Cancel a pending clear delay. */
+        else try_on(c, now);
     } else {
         c->clear_since = now;
         if (c->off_delay_seconds) {
@@ -53,7 +70,8 @@ void occupancy_resync(occupancy_control *c, uint32_t now) {
     if (!c->enabled || !c->known) return;
     /* Retain a running local clear delay across a network reconnect. */
     if (c->off_pending && !due(now, c->off_deadline)) return;
-    queue(c, c->occupied, now);
+    if (!c->occupied || c->on_latched) queue(c, c->occupied, now);
+    else try_on(c, now);
 }
 void occupancy_tick(occupancy_control *c, uint32_t now,
                     occupancy_send_fn send, void *ctx) {

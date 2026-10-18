@@ -3,11 +3,11 @@
 #include "occupancy_control.h"
 #include <stddef.h>
 
-#define BRIDGE_ROUTE_COUNT 4u
+#define BRIDGE_ROUTE_COUNT 1u
 #define BRIDGE_CONFIG_SIZE 16u
 typedef struct {
     uint8_t enabled, dp, type, reserved;
-    uint16_t off_delay_seconds;
+    uint16_t off_delay_seconds, on_lux_threshold;
     uint32_t active_value, clear_value;
 } route_config;
 typedef struct {
