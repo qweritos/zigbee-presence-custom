@@ -139,6 +139,10 @@ def flash(d,args):
             pages[base+offset]=image[offset:offset+PAGE].ljust(PAGE,b'\xff')
     if args.initialize_nvm:
         for address in range(0xb6000,0xbe000,PAGE):pages[address]=b'\xff'*PAGE
+    if args.clear_ota:
+        # Invalidate both staged GBL and the end-of-slot Zigbee OTA metadata.
+        # Discard only a superseded/failed download; network NVM starts at B6000.
+        for address in [0x60000,0xb4000]:pages[address]=b'\xff'*PAGE
     report={'stock_sha256':hashlib.sha256(saved).hexdigest(),'pages':[]}
     for index,(address,data) in enumerate(sorted(pages.items())):
         execute(2 if data==b'\xff'*PAGE else 1,address,b'' if data==b'\xff'*PAGE else data)
@@ -162,6 +166,7 @@ def main():
     f=sub.add_parser('flash')
     for name in ['backup','loader','bootloader','application']:f.add_argument('--'+name,type=Path,required=True)
     f.add_argument('--ieee',required=True);f.add_argument('--initialize-nvm',action='store_true')
+    f.add_argument('--clear-ota',action='store_true',help='Invalidate superseded staged image; preserve network NVM')
     args=p.parse_args();d=Debugger(args.openocd)
     try:
         if args.action=='flash':flash(d,args)

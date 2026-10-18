@@ -17,7 +17,7 @@ Endpoint 1 exposes an On/Off client, occupancy server and control settings. The 
 binding table stores destination IEEE addresses and endpoint numbers. Multiple
 destinations can be bound to the source endpoint. Commands are absolute On/Off;
 unchanged reports do not repeatedly override a manually changed light. The
-On illuminance threshold defaults to0 (no limit); a nonzero value blocks On
+On illuminance threshold defaults to 0 (no limit); a nonzero value blocks On
 above the chosen lux level. An accepted On remains on until occupancy clears.
 
 The generic profile starts with direct control disabled. The `ztc6ggyl` profile adds

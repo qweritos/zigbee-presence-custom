@@ -1,18 +1,40 @@
 # Hardware validation
 
-## Single-endpoint illuminance revision (v5)
+## Single-endpoint illuminance revision (v7)
 
-The current firmware exposes only source endpoint1. The On illuminance threshold
-defaults to0 (bypass); nonzero values block On only above the configured lux.
+The current firmware exposes only source endpoint 1. The On illuminance threshold
+defaults to 0 (bypass); nonzero values block On only above the configured lux.
 Once On is accepted, later brightness cannot turn it off. The original EP1
-configuration migrates with a zero limit; retired endpoint2–4 configuration and
+configuration migrates with a zero limit; retired endpoints 2–4 configuration and
 bindings are removed.
 
 Host ASan/UBSan tests pass for above/equal/below-threshold input, unknown lux,
 zero bypass, feedback latching, delayed-Off cancellation, mapping/enable changes,
-and version1/version2 settings decoding. Both generic and radar production
-profiles build as v5 with one generated endpoint. OTA and real-MCU hardware
-acceptance for this revision are in progress.
+and version 1/version 2 settings decoding. Both generic and radar production
+profiles build as v7 with one generated endpoint.
+
+The attempted v3→v5 OTA reached its complete image but failed when the SDK used
+the old cached image size and requested beyond EOF. v5 was not installed.
+The build now applies a guarded local SDK patch, preserving the external SDK.
+A regression compiles the actual SDK query function against storage fixtures:
+the original fails shrinking/growing/partial-cache cases; the patched copy
+passes those and the intentionally reused-cache case.
+
+| Check | Result |
+| --- | --- |
+| v6 diagnostic wired install and targeted page readback | PASS, 40 pages; failed staging invalidated, network NVM retained |
+| v1 settings migration and original EP1 peer binding | PASS, new limit defaults to0; no persistence errors |
+| Actual descriptor and HA cleanup | PASS, one source endpoint; 48 retired/unsupported registry entries removed |
+| Reset with HA unavailable and nonzero limit | PASS, settings/source/binding retained; unknown lux blocks On |
+| Above/equal/below threshold with HA unavailable | PASS, direct sensor-originated actuator reads |
+| Brightness feedback and cancelled delayed Off with HA unavailable | PASS |
+| v6→v7 production OTA, diagnostic mailbox removed | In progress |
+| Production real-MCU reports and final restored defaults | In progress |
+
+The v6 outage test used SWD input injection and suspended both HA and its
+supervisor Python processes; process states and HTTP timeout were checked.
+Actuator reads originated on the sensor. A bounded retry allows address/route
+discovery after reset. This result does not claim a physical walk-through.
 
 ## Initial v3 deployment
 

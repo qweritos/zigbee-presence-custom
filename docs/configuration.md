@@ -91,7 +91,7 @@ The initial MCU did not report DP101 after an LED write, so its LED state remain
 unknown; that optional control has no confirmed hardware acceptance. The range
 and sensitivity settings are read from actual MCU reports rather than guessed defaults.
 
-Upgrading from the earlier four-endpoint firmware preserves endpoint1 settings
-and bindings, defaults its new lux limit to0, and deletes retired endpoint2–4
+Upgrading from the earlier four-endpoint firmware preserves endpoint 1 settings
+and bindings, defaults its new lux limit to 0, and deletes retired endpoints 2–4
 settings and bindings. Reinterview the device after upgrading and remove the
-retired entities from the HA registry. The current quirk exposes only endpoint1.
+retired entities from the HA registry. The current quirk exposes only endpoint 1.

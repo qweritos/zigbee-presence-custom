@@ -15,10 +15,11 @@ into a directory with `sdk/`, `gcc/arm-gnu-toolchain-12.3.rel1-x86_64-arm-none-e
 
 ```
 make test
-python3 scripts/build.py --tools /path/to/tools --profile generic --version 5 --force-generation
-python3 scripts/build.py --tools /path/to/tools --profile ztc6ggyl --version 5 --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile generic --version 7 --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile ztc6ggyl --version 7 --force-generation
 python3 scripts/build.py --tools /path/to/tools --bootloader --force-generation
 python3 scripts/build_loader.py --tools /path/to/tools
+python3 tests/sdk_ota_size_check.py build/ztc6ggyl/patches/ota-client.c
 ```
 
 `build/` contains generation/compile logs, generated sources, and a manifest.
@@ -57,3 +58,14 @@ For diagnostic builds, `scripts/debug.py` resolves its mailbox from the exact
 ELF and checks the physical target IEEE. It supports pairing, input injection,
 route configuration and direct bound-actuator reads. Production builds omit
 the mailbox. These commands never substitute for a real MCU/reporting test.
+
+The build applies a guarded fix to a build-local copy of the SDK2025.6.2
+OTA client and records its hash under `sdk_patches`. The upstream client
+overwrites a server-offered image size while inspecting an older cached image.
+The fix restores the offered size when starting a new download, retaining the
+cached size only when reusing that cached image. The external SDK is unchanged.
+The standalone regression compiles the actual external SDK query function with
+storage/transport fixtures for shrinking, growing, partial and reused cached
+images. The unmodified SDK fails those size cases; the patched copy passes.
+For recovery from a failed staged image, `swd.py flash --clear-ota` invalidates
+only the staged GBL prefix and end-of-slot OTA metadata, preserving network NVM.
