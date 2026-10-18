@@ -1,0 +1,41 @@
+project_name: bootloader
+sdk: {id: simplicity_sdk, version: 2025.6.2}
+package: bootloader
+quality: production
+label: Bootloader - SoC Internal Storage (single image on 768kB device)
+description: >
+  Internal-storage bootloader for EFR32MG21A020F768IM32. Application vectors
+  start at 0x4000. Slot 0 starts at 0x60000, has size 0x56000 (344 KiB), and
+  ends at 0xB6000 before the application's network/configuration storage.
+
+category: Example|Bootloader
+filter:
+  - name: "Device Type"
+    value: ["SoC"]
+  - name: "Project Difficulty"
+    value: ["Advanced"]
+  - name: "MCU"
+    value: ["Bootloader"]
+
+
+component:
+  - id: bootloader_core
+  - id: bootloader_crc
+  - id: bootloader_aes_sha_ecdsa
+  - id: bootloader_internal_storage
+  - id: bootloader_storage_slots
+  - id: bootloader_image_parser
+  - id: bootloader_common_storage
+  - id: bootloader_token_management
+  - id: bootloader_debug
+  - id: bootloader_compression_lzma
+
+configuration:
+  - name: BTL_STORAGE_BASE_ADDRESS
+    value: 393216
+  - name: SLOT0_ENABLE
+    value: 1
+  - name: SLOT0_SIZE
+    value: 352256
+  - name: SLOT0_START
+    value: 393216

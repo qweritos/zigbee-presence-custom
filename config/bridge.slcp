@@ -1,0 +1,76 @@
+# Silicon Labs Project Configuration Tools: slcp, v0, Component selection file.
+project_name: mcu_bridge
+description: Configurable Tuya MCU to Zigbee binding bridge
+category: Zigbee Application
+package: Zigbee
+quality: experimental
+source:
+- {path: ../src/main.c}
+- {path: ../src/bridge.c}
+- {path: ../src/platform/zigbee.c}
+- {path: ../src/platform/ota.c}
+- {path: ../src/platform/uart.c}
+- {path: ../src/core/tuya_protocol.c}
+- {path: ../src/core/occupancy_control.c}
+- {path: ../src/core/routes.c}
+include:
+- {path: ../src}
+sdk: {id: simplicity_sdk, version: 2025.6.2}
+toolchain_settings: []
+component:
+- {id: sl_main}
+- {id: sl_main_custom_main}
+- instance: [bridge]
+  id: cli
+- instance: [inst]
+  id: iostream_dummy
+- {id: emlib_usart}
+- {id: toolchain_gcc}
+- {id: zigbee_application_bootloader}
+- {id: zigbee_basic}
+- {id: zigbee_core_cli}
+- {id: zigbee_counters}
+- {id: zigbee_debug_print}
+- {id: zigbee_groups_client}
+- {id: zigbee_network_steering}
+- {id: zigbee_ota_bootload}
+- {id: zigbee_ota_client}
+- {id: zigbee_ota_client_policy}
+- {id: zigbee_ota_storage_simple}
+- {id: zigbee_pro_stack}
+- {id: zigbee_fragmentation}
+- {id: zigbee_reporting}
+- {id: zigbee_scan_dispatch}
+- {id: zigbee_source_route}
+- {id: zigbee_update_tc_link_key}
+- {id: zigbee_zcl_cli}
+- {id: zigbee_zcl_framework_core}
+config_file:
+- {path: zcl_config.zap, directory: zcl}
+configuration:
+- {name: SL_APPLICATION_VERSION, value: 1}
+- {name: SL_DEVICE_INIT_HFXO_CTUNE, value: '160'}
+- {name: SL_CLI_MAX_INPUT_ARGUMENTS, value: '16'}
+- {name: SLI_ZIGBEE_PRIMARY_NETWORK_DEVICE_TYPE, value: SLI_ZIGBEE_NETWORK_DEVICE_TYPE_ROUTER}
+- {name: SLI_ZIGBEE_PRIMARY_NETWORK_SECURITY_TYPE, value: SLI_ZIGBEE_NETWORK_SECURITY_TYPE_3_0}
+- condition: [device_series_1]
+  name: NVM3_DEFAULT_NVM_SIZE
+  value: '36864'
+- condition: [device_series_2]
+  name: NVM3_DEFAULT_NVM_SIZE
+  value: '32768'
+- {name: SL_PSA_ITS_SUPPORT_V1_DRIVER, value: '0'}
+- {name: SL_PSA_ITS_SUPPORT_V2_DRIVER, value: '0'}
+- {name: SL_PSA_ITS_SUPPORT_V3_DRIVER, value: '1'}
+- {name: SL_ZIGBEE_AF_PLUGIN_REPORTING_TABLE_SIZE, value: '32'}
+- {name: SL_ZIGBEE_BINDING_TABLE_SIZE, value: '32'}
+- {name: SL_ZIGBEE_AF_PLUGIN_OTA_STORAGE_SIMPLE_EEPROM_GECKO_BOOTLOADER_STORAGE_SUPPORT, value: 'USE_FIRST_SLOT'}  
+- {name: SL_ZIGBEE_AF_PLUGIN_OTA_STORAGE_SIMPLE_EEPROM_STORAGE_END, value: '352256'}
+- {name: SL_ZIGBEE_AF_PLUGIN_OTA_CLIENT_AUTO_START, value: '1'}
+- {name: SL_ZIGBEE_AF_PLUGIN_OTA_CLIENT_POLICY_FIRMWARE_VERSION, value: 1}
+- {name: SL_ZIGBEE_AF_PLUGIN_OTA_CLIENT_POLICY_IMAGE_TYPE_ID, value: 19779}
+- {name: SL_ZIGBEE_PACKET_BUFFER_HEAP_SIZE, value: SL_ZIGBEE_MEDIUM_PACKET_BUFFER_HEAP}
+ui_hints: {}
+define: 
+  - name: HAL_SILABS
+    value: '1'

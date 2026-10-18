@@ -1,0 +1,12 @@
+/build/
+/.tools/
+*.bin
+*.elf
+*.s37
+*.gbl
+*.ota
+*.hex
+*.map
+__pycache__/
+*.pyc
+.venv/

@@ -1,0 +1,11 @@
+The dynamic Silicon Labs Zigbee HAL (src/hal/zigbee*.h,
+src/platform/zigbee.c, src/platform/ota.c) and initial SLC/ZAP configuration
+are adapted from romasku/tuya-zigbee-switch, revision 8542fc05:
+https://github.com/romasku/tuya-zigbee-switch
+Its permission notice is preserved in LICENSES/tuya-zigbee-switch.txt. These files have been modified
+for the configurable MCU bridge and Simplicity SDK 2025.6.2.
+
+The Silicon Labs SDK, Zigbee stack libraries, compiler, and generation tools
+are external dependencies with their own licenses. They are not included in
+this repository. No Tuya stock firmware, network keys, or device backups are
+included.
