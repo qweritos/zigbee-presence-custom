@@ -1,9 +1,18 @@
 # Zigbee presence firmware
 
-Configurable Zigbee presence sensor firmware for the ZS3L / EFR32MG21.
-Map MCU datapoints to standard Zigbee On/Off commands and bind the
-source endpoint directly to destination devices and endpoints. Control runs
-on the radio, including its optional off delay, without Home Assistant automations.
+**Lux-gated direct Zigbee binding** is the primary feature: the presence sensor
+decides locally when to turn bound lights on and off, using occupancy and a
+configurable illuminance threshold. The sensor sends standard Zigbee On/Off
+commands directly to the bound destination devices and endpoints. Lux gating,
+brightness-feedback protection and the optional off delay run on the sensor.
+
+Once commissioned and bound, lighting continues through Home Assistant or
+automation downtime. Control also operates without the coordinator, provided
+the powered Zigbee peers still have a working mesh path between them.
+Home Assistant supplies configuration and telemetry; no HA control automation
+is required.
+
+Configurable firmware for Zigbee presence sensors using the ZS3L / EFR32MG21.
 
 Supported models:
 
@@ -17,6 +26,7 @@ uses its original separate radar MCU.
 
 **Experimental:** direct control, illuminance gating, timers and persistence
 have passed real MCU/relay tests, including operation with HA suspended.
+Coordinator hardware power-loss operation has not yet been tested.
 See the methods and limits in [validation](docs/validation.md).
 
 One configurable input supports boolean, enum, unsigned integer or bitmap
