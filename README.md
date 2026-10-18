@@ -5,10 +5,10 @@ Map MCU datapoints to standard Zigbee On/Off commands and bind the
 source endpoint directly to destination devices and endpoints. Control runs
 on the radio, including its optional off delay, without Home Assistant automations.
 
-**Experimental:** direct control, timers, persistence and
-operation with HA suspended have passed on the initial hardware profile. Actual
-OTA updates 1 → 2 → 3 passed; production version 3 is installed and its complete
-application readback matches the build. The factory identity is preserved.
+**Experimental:** direct control, timers, persistence and operation with HA
+suspended have passed on the initial hardware profile. Production version 7
+is installed via OTA; real MCU reports passed illuminance-gated relay control.
+The factory identity and original endpoint 1 binding are preserved.
 See the precise methods and limits in [validation](docs/validation.md).
 
 One configurable input supports boolean, enum, unsigned integer or bitmap

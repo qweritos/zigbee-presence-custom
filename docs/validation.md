@@ -23,18 +23,34 @@ passes those and the intentionally reused-cache case.
 | Check | Result |
 | --- | --- |
 | v6 diagnostic wired install and targeted page readback | PASS, 40 pages; failed staging invalidated, network NVM retained |
-| v1 settings migration and original EP1 peer binding | PASS, new limit defaults to0; no persistence errors |
+| v1 settings migration and original EP1 peer binding | PASS, new limit defaults to 0; no persistence errors |
 | Actual descriptor and HA cleanup | PASS, one source endpoint; 48 retired/unsupported registry entries removed |
 | Reset with HA unavailable and nonzero limit | PASS, settings/source/binding retained; unknown lux blocks On |
 | Above/equal/below threshold with HA unavailable | PASS, direct sensor-originated actuator reads |
 | Brightness feedback and cancelled delayed Off with HA unavailable | PASS |
-| v6→v7 production OTA, diagnostic mailbox removed | In progress |
-| Production real-MCU reports and final restored defaults | In progress |
+| v6→v7 production OTA, diagnostic mailbox removed | PASS, live OTA cluster version 7 |
+| Nonzero illuminance limit survives OTA | PASS, 65535 retained then restored to requested 0 |
+| Production real-MCU reports | PASS, above/equal/below threshold, zero bypass, unknown lux, brightness latch, deduplication and clear-delay cancellation |
+| Final restored settings | PASS, real occupancy DP1 enum 1/0, lux DP104, limit/delay 0, original sensitivity 8; actual occupancy and relay state agree |
+| Final HA entities and control binding | PASS, one source endpoint, one peer binding; retired entries did not reappear |
+| Complete production app and factory-region readback | PASS, exact application match; USERDATA/DEVINFO unchanged, original IEEE and CTUNE160 preserved |
 
 The v6 outage test used SWD input injection and suspended both HA and its
 supervisor Python processes; process states and HTTP timeout were checked.
 Actuator reads originated on the sensor. A bounded retry allows address/route
 discovery after reset. This result does not claim a physical walk-through.
+
+Production tests temporarily used integer MCU sensitivity reports as the input
+and illuminance source, forwarding real commands to the MCU and reading the
+actual relay after its reports. Original settings and real occupancy/lux inputs
+were restored afterward. The former HA automation stayed disabled.
+HA polling encountered timeouts with short observation windows; the final
+suite allows 20 seconds for transport observations. An isolated trace showed
+the configured two-second Off, and the independent outage test also passed
+delay/cancellation. No firmware timing was changed for HA polling latency.
+
+The v7 production application is 286160 bytes; the complete installed readback
+has SHA256 `531d7b0b51f27ed31cef09a6b626cebcf5966cf9d064da5c6c1e13ef325bb295`.
 
 ## Initial v3 deployment
 
