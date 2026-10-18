@@ -48,8 +48,6 @@ def stage(profile, output, repository, tools):
         raise ValueError('Release staging directory must be empty')
     sources = {
         f'{profile}.bin': build / 'bridge.bin',
-        f'{profile}.elf': build / 'generated/build/release/mcu_bridge.out',
-        f'{profile}.gbl': build / 'ota/bridge.gbl',
         f'{profile}.ota': build / 'ota/bridge.ota',
         f'{profile}-bootloader.bin': ROOT / 'build/bootloader-release/bootloader.bin',
         f'{profile}-loader.bin': ROOT / 'build/loader/loader.bin',
@@ -80,19 +78,13 @@ def stage(profile, output, repository, tools):
                'commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip(),
                'signed_images': False, 'build': manifest, 'artifacts': files}
     (output / f'{profile}-manifest.json').write_text(json.dumps(release, indent=2) + '\n')
-    sums = ''.join(f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n'
-                   for p in sorted(output.iterdir()) if p.is_file())
-    (output / f'{profile}.SHA256SUMS').write_text(sums)
-    with zipfile.ZipFile(output / f'{profile}-{version}.zip', 'w', zipfile.ZIP_DEFLATED) as z:
-        for p in sorted(output.iterdir()):
-            if p.is_file() and p.suffix != '.zip':
-                z.write(p, p.name)
     print(f'{profile}: release {version}, OTA 0x{encoded:08x}, production artifacts validated')
 
 
-def collect(root):
+def collect(root, output):
     version, encoded, models = metadata()
     combined = {'firmwares': []}
+    releases = {}
     for profile in models:
         manifest = json.loads((root / f'{profile}-manifest.json').read_text())
         if manifest['version'] != version or manifest['ota_version'] != encoded:
@@ -102,11 +94,28 @@ def collect(root):
             if len(data) != item['size'] or hashlib.sha256(data).hexdigest() != item['sha256']:
                 raise ValueError('Release artifact checksum mismatch')
         combined['firmwares'].extend(json.loads((root / f'{profile}-index.json').read_text())['firmwares'])
-    (root / 'index.json').write_text(json.dumps(combined, indent=2) + '\n')
-    (root / 'SHA256SUMS').write_text(''.join(
+        releases[profile] = manifest
+    output.mkdir(parents=True, exist_ok=True)
+    if any(output.iterdir()):
+        raise ValueError('Public release directory must be empty')
+    for profile, manifest in releases.items():
+        shutil.copyfile(root / f'{profile}.ota', output / f'{profile}.ota')
+        names = [f'{profile}.bin', f'{profile}-bootloader.bin', f'{profile}-loader.bin',
+                 'zigbee_presence.py', 'LICENSE', 'NOTICE', 'upstream-license.txt',
+                 'SiliconLabs-SDK-License.txt', 'README.md', 'hardware.md']
+        contents = {name: (root / name).read_bytes() for name in names}
+        install_manifest = dict(manifest, artifacts=[
+            {'file': name, 'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
+            for name, data in contents.items()])
+        contents[f'{profile}-manifest.json'] = (json.dumps(install_manifest, indent=2) + '\n').encode()
+        with zipfile.ZipFile(output / f'{profile}-{version}.zip', 'w', zipfile.ZIP_DEFLATED) as z:
+            for name, data in contents.items():
+                z.writestr(name, data)
+    (output / 'index.json').write_text(json.dumps(combined, indent=2) + '\n')
+    (output / 'SHA256SUMS').write_text(''.join(
         f'{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n'
-        for p in sorted(root.iterdir()) if p.is_file() and p.name != 'SHA256SUMS'))
-    print(f'Validated {len(models)} supported model(s) for release {version}')
+        for p in sorted(output.iterdir()) if p.is_file() and p.name != 'SHA256SUMS'))
+    print(f'Validated {len(models)} supported model(s); {2 * len(models) + 2} public release assets for {version}')
 
 
 def main():
@@ -118,6 +127,7 @@ def main():
     s.add_argument('--repository', required=True)
     s.add_argument('--tools', type=Path, default=ROOT / '.tools')
     c = sub.add_parser('collect'); c.add_argument('--directory', type=Path, required=True)
+    c.add_argument('--output', type=Path, required=True)
     a = p.parse_args()
     if a.command == 'metadata':
         version, encoded, models = metadata(a.tag)
@@ -125,7 +135,7 @@ def main():
     elif a.command == 'stage':
         stage(a.profile, a.output, a.repository, a.tools)
     else:
-        collect(a.directory)
+        collect(a.directory, a.output)
 
 
 if __name__ == '__main__':

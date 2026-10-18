@@ -3,10 +3,17 @@
 Download the ZIP for your model from [GitHub Releases](https://github.com/qweritos/zigbee-presence-custom/releases).
 Currently only ZY-M100 v1.3, ZS3L / EFR32MG21A020F768IM32 is supported.
 
-Each model has an application `.bin` (address `0x4000`), bootloader `.bin`
-(address `0`), RAM-only SWD loader, debug ELF, GBL, Zigbee `.ota`, build manifest,
-checksums, ZHA quirk and license notices. Verify checksums before use.
-The loader is a RAM programmer, not a third persistent firmware image.
+Each release has only:
+
+- **Model ZIP:** wired-install application and bootloader, RAM-only SWD loader,
+  ZHA quirk, instructions, manifest and license notices.
+- **Model `.ota`:** updates an existing compatible custom installation.
+- **`index.json`:** OTA provider index for all supported models.
+- **`SHA256SUMS`:** checksums for the downloads.
+
+Verify checksums before use. Inside the ZIP, the application `.bin` starts at
+`0x4000` and the bootloader at `0`. The loader runs in RAM only.
+Debug ELF and intermediate GBL files remain build outputs, not release assets.
 
 First conversion from stock requires [wired flashing and private backups](hardware.md).
 For a compatible custom installation, use the `.ota` file or add the release's

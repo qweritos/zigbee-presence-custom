@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
@@ -28,20 +29,36 @@ class ReleaseTests(unittest.TestCase):
                 module, 'metadata', return_value=('0.0.1', 256, {'zy-m100': {}})):
             root = Path(directory)
             (root / 'zy-m100.ota').write_bytes(b'validated-image')
-            item = {'file': 'zy-m100.ota', 'size': 15,
-                    'sha256': hashlib.sha256(b'validated-image').hexdigest()}
-            manifest = {'version': '0.0.1', 'ota_version': 256, 'artifacts': [item]}
+            install_names = ['zy-m100.bin', 'zy-m100-bootloader.bin', 'zy-m100-loader.bin',
+                             'zigbee_presence.py', 'LICENSE', 'NOTICE', 'upstream-license.txt',
+                             'SiliconLabs-SDK-License.txt', 'README.md', 'hardware.md']
+            for name in install_names:
+                (root / name).write_bytes(b'installation-file')
+            (root / 'debug.elf').write_bytes(b'debug-only')
+            (root / 'intermediate.gbl').write_bytes(b'intermediate-only')
+            artifacts = [{'file': name, 'size': (root / name).stat().st_size,
+                          'sha256': hashlib.sha256((root / name).read_bytes()).hexdigest()}
+                         for name in install_names + ['zy-m100.ota']]
+            manifest = {'version': '0.0.1', 'ota_version': 256, 'artifacts': artifacts}
             (root / 'zy-m100-manifest.json').write_text(json.dumps(manifest))
             (root / 'zy-m100-index.json').write_text(json.dumps({'firmwares': [{'file_version': 256}]}))
-            module.collect(root)
-            self.assertEqual(json.loads((root / 'index.json').read_text())['firmwares'][0]['file_version'], 256)
+            output = root / 'public'
+            module.collect(root, output)
+            self.assertEqual({p.name for p in output.iterdir()},
+                             {'zy-m100-0.0.1.zip', 'zy-m100.ota', 'index.json', 'SHA256SUMS'})
+            self.assertEqual(json.loads((output / 'index.json').read_text())['firmwares'][0]['file_version'], 256)
+            with zipfile.ZipFile(output / 'zy-m100-0.0.1.zip') as z:
+                self.assertEqual(set(z.namelist()), set(install_names + ['zy-m100-manifest.json']))
+                bundled = json.loads(z.read('zy-m100-manifest.json'))
+                for item in bundled['artifacts']:
+                    self.assertEqual(hashlib.sha256(z.read(item['file'])).hexdigest(), item['sha256'])
             (root / 'zy-m100.ota').write_bytes(b'tampered-image!')
             with self.assertRaisesRegex(ValueError, 'checksum'):
-                module.collect(root)
+                module.collect(root, output)
             manifest['ota_version'] = 9
             (root / 'zy-m100-manifest.json').write_text(json.dumps(manifest))
             with self.assertRaisesRegex(ValueError, 'Mixed'):
-                module.collect(root)
+                module.collect(root, output)
             with patch.object(module, 'metadata', return_value=('0.0.1', 256, {'missing-model': {}})):
                 with self.assertRaises(FileNotFoundError):
-                    module.collect(root)
+                    module.collect(root, output)
