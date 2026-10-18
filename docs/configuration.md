@@ -35,8 +35,7 @@ the value. While occupied and blocked, a later qualifying lux report can permit
 On. Once accepted, On stays latched until occupancy clears and any Off delay
 expires; brightness from the lamp cannot turn it off. Renewed occupancy during
 the delay retains On. A nonzero limit with unknown lux waits for a valid report.
-The limit affects On only; it never suppresses occupancy-driven Off. Select the
-correct illuminance datapoint before using a nonzero limit.
+The limit affects On only; it never suppresses occupancy-driven Off. The supported model selects its illuminance datapoint automatically.
 
 Create a **standard ZDO unicast binding** with:
 
@@ -65,12 +64,12 @@ hardware-tested. The included settings UI is the ZHA quirk. Its manufacturer
 and model strings must match the selected firmware profile.
 
 For Home Assistant OTA, copy the build's `ota/` files into
-`/config/ota/tuya-mcu-bridge/` and add this provider under the existing
+`/config/ota/zigbee-presence/` and add this provider under the existing
 `zha.zigpy_config.ota.extra_providers` list, preserving other providers:
 
 ```yaml
 - type: zigpy_local
-  index_file: /config/ota/tuya-mcu-bridge/index.json
+  index_file: /config/ota/zigbee-presence/index.json
 ```
 
 Restart HA to load a changed YAML provider configuration. The index is restricted
@@ -80,16 +79,35 @@ packages are unencrypted and unsigned; the development bootloader accepts them.
 `0xFC11` / attribute `0x0010` on endpoint 1 configures an illuminance input DP
 (0 disables it). It expects Tuya integer lux and publishes the ZCL logarithmic
 illuminance measurement. All route configuration persists independently of HA.
-The generic profile defaults to disabled routes and illuminance. The ZTC6
-profile defaults route 1 to DP 1 enum, On=1, Off=0, delay=0, and illuminance DP104.
+The supported `zy-m100` profile defaults endpoint 1 to DP 1 enum, On=1, Off=0, delay=0, and illuminance DP104.
 
-The ZTC6-only cluster `0xFC20` exposes motion sensitivity (2), minimum/maximum
-range in cm (3/4), LED boolean (101), presence sensitivity raw 0–100 (102), and
+The ZY-M100 cluster `0xFC20` exposes motion sensitivity (2), minimum/maximum
+range in cm (3/4), presence sensitivity raw 0–100 (102), and
 read-only distance in cm (9, float). Writes are sent to the MCU; its reports
 establish the resulting value. No extra detection/fading parameters are invented.
-The initial MCU did not report DP101 after an LED write, so its LED state remains
-unknown; that optional control has no confirmed hardware acceptance. The range
-and sensitivity settings are read from actual MCU reports rather than guessed defaults.
+The unsupported optional LED setting is omitted. Defaults are 8 for motion
+sensitivity, 0/525 cm for minimum/maximum range, and 100 raw (10/10) for
+presence sensitivity. Desired settings persist in radio NVM and are reapplied
+at startup, with bounded retries; only MCU reports establish actual values.
+Unconfirmed readings remain unknown rather than displaying invented values.
+The normal HA UI exposes radar settings, off delay and
+On illuminance threshold. Direct control defaults to enabled; its advanced
+master-enable attribute is omitted from HA controls. Protocol datapoint IDs/types/active/clear values are
+advanced ZCL attributes, not HA controls.
+
+Illuminance DP104 is already a lux value from the unchanged radar MCU. Its ZCL
+encoding is `0` at zero lux, otherwise `min(65534, 10000*log10(lux)+1)`.
+This matches the original ZHA converter; 1000 lux encodes to 30001. A displayed
+reading near 1000 lux is not a new factor-of-ten conversion in this firmware.
+
+Pairing uses the existing MCU button and LED. Hold the button for about five
+seconds: the stock MCU requests leave-and-join (UART command3, payload1).
+The radio acknowledges it and advertises pairing status3 throughout a
+180-second commissioning window, including between scan retries, then status1
+after joining or status0 on timeout. Network/configuration storage is preserved
+by normal firmware updates; pairing intentionally changes network membership.
+See [validation](validation.md) for the distinction between stock MCU emulation,
+radio commissioning tests and physical button/LED observations.
 
 Upgrading from the earlier four-endpoint firmware preserves endpoint 1 settings
 and bindings, defaults its new lux limit to 0, and deletes retired endpoints 2–4

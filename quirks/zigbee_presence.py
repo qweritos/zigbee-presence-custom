@@ -1,17 +1,10 @@
-"""Configuration entities for the open Tuya MCU radio bridge (no automation)."""
+"""Zigbee presence firmware configuration; control runs on the sensor."""
 from zigpy.quirks import CustomCluster
 import zigpy.types as t
 from zigpy.zcl import foundation
 from zigpy.zcl import ClusterType
 from zigpy.zcl.clusters.general import OnOff
 from zhaquirks.builder import EntityType, QuirkBuilder, ReportingConfig
-
-
-class DatapointType(t.enum8):
-    Boolean = 1
-    Integer = 2
-    Enum = 4
-    Bitmap = 5
 
 
 class DirectOnOffClient(CustomCluster, OnOff):
@@ -70,10 +63,10 @@ class DiagnosticsCluster(CustomCluster):
         uart_errors = foundation.ZCLAttributeDef(id=34, type=t.uint32_t, access="r", is_manufacturer_specific=False)
 
 
-class Ztc6RadarCluster(CustomCluster):
+class PresenceRadarCluster(CustomCluster):
     cluster_id = 0xFC20
-    name = "ZTC6 radar settings"
-    ep_attribute = "ztc6_radar_settings"
+    name = "Presence radar settings"
+    ep_attribute = "presence_radar_settings"
 
     def _update_attribute(self, attrid, value, *args, **kwargs):
         # Tuya products need not report every optional DP. Preserve unknown state
@@ -89,31 +82,20 @@ class Ztc6RadarCluster(CustomCluster):
         minimum_range = foundation.ZCLAttributeDef(id=3, type=t.uint32_t, access="rw", is_manufacturer_specific=False)
         maximum_range = foundation.ZCLAttributeDef(id=4, type=t.uint32_t, access="rw", is_manufacturer_specific=False)
         distance = foundation.ZCLAttributeDef(id=9, type=t.Single, access="r", is_manufacturer_specific=False)
-        led = foundation.ZCLAttributeDef(id=101, type=t.Bool, access="rw", is_manufacturer_specific=False)
         presence_sensitivity = foundation.ZCLAttributeDef(id=102, type=t.uint32_t, access="rw", is_manufacturer_specific=False)
 
 
 def build_quirk(model: str, radar: bool = False):
-    builder = QuirkBuilder("OpenZigbee-MCU", model).replaces(DiagnosticsCluster)
+    builder = QuirkBuilder("www.andrey.wtf", model).replaces(DiagnosticsCluster)
     for ep in (1,):
         builder.replaces(RouteCluster, endpoint_id=ep)
         builder.replaces(DirectOnOffClient, endpoint_id=ep, cluster_type=ClusterType.Client)
         # This client sends actuator commands; it is not a contact/opening sensor.
         builder.prevent_default_entity_creation(endpoint_id=ep, cluster_id=OnOff.cluster_id,
                                                cluster_type=ClusterType.Client)
-        builder.switch("enabled", RouteCluster.cluster_id, endpoint_id=ep,
-                       fallback_name="Direct control enabled", translation_key="route_enabled")
-        builder.enum("datapoint_type", DatapointType, RouteCluster.cluster_id, endpoint_id=ep,
-                     fallback_name="Input DP type", translation_key="route_datapoint_type")
-        for attr, maximum, label in [
-            ("datapoint", 255, "datapoint"),
-            ("active_value", 4294967295, "active value"),
-            ("clear_value", 4294967295, "clear value"), ("off_delay", 65535, "off delay"),
-        ]:
-            builder.number(attr, RouteCluster.cluster_id, endpoint_id=ep,
-                           min_value=0, max_value=maximum, step=1,
-                           unit="s" if attr == "off_delay" else None,
-                           fallback_name=f"Input {label}" if attr != "off_delay" else "Off delay", translation_key=f"route_{attr}")
+        builder.number("off_delay", RouteCluster.cluster_id, endpoint_id=ep,
+                       min_value=0, max_value=65535, step=1, unit="s",
+                       fallback_name="Off delay", translation_key="route_off_delay")
         builder.number("on_lux_threshold", RouteCluster.cluster_id, endpoint_id=ep,
                        min_value=0, max_value=65535, step=1, unit="lx",
                        fallback_name="On illuminance threshold", translation_key="on_lux_threshold")
@@ -121,28 +103,24 @@ def build_quirk(model: str, radar: bool = False):
             builder.sensor(attr, RouteCluster.cluster_id, endpoint_id=ep,
                            entity_type=EntityType.DIAGNOSTIC, initially_disabled=True,
                            fallback_name=attr.replace('_', ' ').capitalize(), translation_key=f"route_{attr}")
-    builder.number("illuminance_datapoint", DiagnosticsCluster.cluster_id, min_value=0,
-                   max_value=255, step=1, fallback_name="Illuminance datapoint", translation_key="illuminance_datapoint")
     for attr in ["frames", "bad_checksums", "queued_commands", "delivered_commands",
                  "delivery_failures", "persistence_failures", "uart_overflows", "uart_errors"]:
         builder.sensor(attr, DiagnosticsCluster.cluster_id, entity_type=EntityType.DIAGNOSTIC,
                        initially_disabled=True, fallback_name=attr.replace('_', ' ').capitalize(), translation_key=attr)
     if radar:
-        builder.replaces(Ztc6RadarCluster)
-        builder.switch("led", Ztc6RadarCluster.cluster_id, fallback_name="Radar LED", translation_key="radar_led")
+        builder.replaces(PresenceRadarCluster)
         for attr, low, high, multiplier, unit, name in [
             ("motion_sensitivity", 1, 10, 1, None, "Motion sensitivity"),
             ("presence_sensitivity", 0, 100, 0.1, None, "Presence sensitivity"),
             ("minimum_range", 0, 950, 0.01, "m", "Minimum range"),
             ("maximum_range", 0, 950, 0.01, "m", "Maximum range"),
         ]:
-            builder.number(attr, Ztc6RadarCluster.cluster_id, min_value=low, max_value=high,
-                           step=1, multiplier=multiplier, unit=unit, fallback_name=name, translation_key=attr)
-        builder.sensor("distance", Ztc6RadarCluster.cluster_id, divisor=100, unit="m",
+            builder.number(attr, PresenceRadarCluster.cluster_id, min_value=low*multiplier, max_value=high*multiplier,
+                           step=multiplier, multiplier=multiplier, unit=unit, fallback_name=name, translation_key=attr)
+        builder.sensor("distance", PresenceRadarCluster.cluster_id, divisor=100, unit="m",
                        fallback_name="Target distance", translation_key="target_distance",
                        reporting_config=ReportingConfig(min_interval=5, max_interval=300, reportable_change=5))
     return builder.add_to_registry()
 
 
-GENERIC_QUIRK = build_quirk("TuyaMCU-Bridge")
-RADAR_QUIRK = build_quirk("TuyaMCU-Bridge-ZTC6", radar=True)
+ZY_M100_QUIRK = build_quirk("ZY-M100", radar=True)

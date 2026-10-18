@@ -17,14 +17,15 @@ PART=0x01150014
 BOX=0x20002000
 
 class Debugger:
-    def __init__(self, executable='openocd'):
+    def __init__(self, executable='openocd', speed=100):
+        if speed not in (25,50,100):raise ValueError('Unsupported SWD speed')
         self.tmp=tempfile.TemporaryDirectory(prefix='mcu-bridge-swd-')
         self.root=Path(self.tmp.name)
         sock=socket.socket();sock.bind(('127.0.0.1',0));port=sock.getsockname()[1];sock.close()
         config=self.root/'debug.cfg'
         config.write_text(f'''source [find interface/jlink.cfg]
 transport select swd
-adapter speed 100
+adapter speed {speed}
 reset_config none
 gdb_port disabled
 telnet_port disabled
@@ -40,7 +41,7 @@ init
         self.process=subprocess.Popen([executable,'-f',str(config)],stdout=self.log,stderr=subprocess.STDOUT)
         for _ in range(50):
             if self.process.poll() is not None:
-                self.log.seek(0);raise RuntimeError(self.log.read()[-1800:])
+                self.log.seek(0);raise RuntimeError(f'OpenOCD exited ({self.process.returncode}):\n'+self.log.read()[-1800:])
             try:self.sock=socket.create_connection(('127.0.0.1',port),timeout=.2);break
             except OSError:time.sleep(.1)
         else:raise RuntimeError('OpenOCD startup timeout')
@@ -61,17 +62,21 @@ init
     def dump(self, path, address, size):
         # Small transfers avoid a single long SWD read exceeding the RPC timeout.
         temporary=self.root/'read-chunk.bin'
+        read_chunk=1024
         with Path(path).open('wb') as output:
-            for offset in range(0,size,PAGE):
-                length=min(PAGE,size-offset)
+            for offset in range(0,size,read_chunk):
+                length=min(read_chunk,size-offset)
                 for attempt in range(3):
                     try:
                         self.call(f'dump_image {{{temporary}}} {address+offset:#x} {length:#x}')
                         break
                     except RuntimeError:
                         if attempt==2:raise RuntimeError(f'SWD read failed at {address+offset:#x}')
-                        self.call('bridge.dap dpreg 0 0x1e')
-                        self.call('poll')
+                        try:
+                            self.call('bridge.dap dpreg 0 0x1e')
+                            self.call('poll')
+                        except RuntimeError:
+                            pass # Retry the actual read; never accept a failed recovery.
                 data=temporary.read_bytes()
                 if len(data)!=length:raise RuntimeError('Short SWD chunk')
                 output.write(data);output.flush()
@@ -159,6 +164,7 @@ def main():
     os.umask(0o077)
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--openocd',default='openocd')
+    p.add_argument('--speed',type=int,choices=[25,50,100],default=100,help='SWD clock in kHz')
     sub=p.add_subparsers(dest='action',required=True)
     sub.add_parser('identify')
     read=sub.add_parser('read');read.add_argument('address',type=lambda x:int(x,0));read.add_argument('count',type=int,nargs='?',default=1)
@@ -167,7 +173,7 @@ def main():
     for name in ['backup','loader','bootloader','application']:f.add_argument('--'+name,type=Path,required=True)
     f.add_argument('--ieee',required=True);f.add_argument('--initialize-nvm',action='store_true')
     f.add_argument('--clear-ota',action='store_true',help='Invalidate superseded staged image; preserve network NVM')
-    args=p.parse_args();d=Debugger(args.openocd)
+    args=p.parse_args();d=Debugger(args.openocd,args.speed)
     try:
         if args.action=='flash':flash(d,args)
         elif args.action=='identify':print({'part':hex(d.read(0x0fe08004)[0]),'ieee_words':[hex(x) for x in d.read(0x0fe08048,2)]})

@@ -34,7 +34,7 @@ def package(data,version,image_type=0x4d43):
     if zlib.crc32(gbl)!=0x2144df1c:raise ValueError('GBL CRC residue mismatch')
     payload=struct.pack('<HI',0,len(gbl))+gbl
     header=struct.pack('<IHHHHHIH32sI',0x0beef11e,0x0100,56,0,0xffff,image_type,
-                       version,2,b'Tuya MCU Zigbee bridge'.ljust(32,b'\0'),56+len(payload))
+                       version,2,b'Zigbee presence firmware'.ljust(32,b'\0'),56+len(payload))
     ota=header+payload
     if len(ota)>SLOT_SIZE:raise ValueError('OTA image does not fit staging slot')
     return gbl,ota

@@ -1,5 +1,92 @@
 # Hardware validation
 
+## Presence firmware naming, defaults and pairing
+
+The project is now `zigbee-presence-firmware`; the supported models table lists
+only ZY-M100. The ZY-M100 build uses manufacturer `www.andrey.wtf`, model
+`ZY-M100`; the factory hardware IEEE remains unchanged. The only supported
+build profile is `zy-m100`. Earlier generic build results below are historical
+and do not claim support for another product.
+
+Host tests cover explicit radar defaults, versioned persistence decoding,
+invalid ranges and the original logarithmic ZCL illuminance conversion.
+The unchanged MCU supplies integer lux. Historical stock HA data before the
+first custom flash already included values around 1000 lux. A direct live read
+of production v7 showed raw MCU 1006 and ZCL 30026 (HA 1005.77 lx), consistent with
+`10000*log10(lux)+1` and the original ZHA quirk. No arbitrary rescaling is applied.
+
+The separate MCU owns the physical button and LED. Its matching original image
+[`ZY-M100_L_TZE204_ztc6ggyl.bin`](https://github.com/Andrik45719/ZY-M100/blob/03770f2873119606d88cecb19a2432fca7c2817e/ZY-M100_L_TZE204_ztc6ggyl.bin)
+has SHA256 `946831e660267822dde10ec9f02a7486711a90de2b898ef77d7b06737a5f389b`.
+The live MCU reports version 0x42, matching that image's version routine; an MCU
+readback has not established that the installed image is byte-identical.
+`scripts/check_stock_pairing.py ORIGINAL.bin` (requires Unicorn) emulates the
+hash-identified binary's routines: 5000 ms does not trigger, 5001 ms sends UART
+command 3 / payload 1 once per hold; release rearms it. With the LED routine enabled,
+network state 3 produces GPIO PA0 edges at 0, 502, 1001, 1503 ms (about 500 ms intervals).
+This is binary-logic evidence, a simulation; physical acceptance is recorded below.
+
+The radio handles that existing MCU request and keeps pairing network status 3
+throughout the 180-second commissioning window, including gaps between scans.
+It also accepts MCU query responses using command 0x2C. Normal configuration UI
+omits datapoint IDs/types/values and the optional unconfirmed LED control.
+
+Diagnostic revision v8 was installed through J-Link with all 40 written pages
+verified. At 3.6 seconds after boot the real MCU had confirmed all four configured
+radar defaults (8,0,525,100). A user setting 7, lux limit 77 and delay 2 survived a
+radio reset; actual MCU reports confirmed 7 after restart, and the original
+endpoint 1 relay binding remained. Settings were restored afterward.
+
+SWD injected the completed MCU pairing request (command 3 / payload 1) into the
+radio frame handler. State 3 and a real MCU status ACK appeared at 1.09 seconds;
+the radio rejoined and the MCU acknowledged state 1 at 6.81 seconds. This validates
+the radio/MCU status exchange and commissioning path, while the physical button
+and optical observation is recorded separately below. Fresh Basic reads and HA reinterview
+confirmed manufacturer/model and applied the new quirk to the existing device
+identity. Six retired protocol/LED controls were removed from the registry;
+the master Direct control enabled toggle was subsequently removed on request.
+a transient unsupported On/Off-client opening entity was also removed.
+
+Physical acceptance was subsequently captured on the running production v9:
+a six-second button hold produced a valid UART-v2 command 3 / payload 01 at 25.44 s
+of the capture, a real MCU network-status ACK at 26.37 s, and network status 3
+at 26.38 s. The user confirmed that the LED was blinking. This establishes the
+physical button-to-radio request and visible pairing indication, beyond the
+earlier stock-binary emulation. Earlier five-second attempts did not provide
+that observation; the stock timer threshold is 5001 ms, so allow about six seconds.
+After a full power cycle, SWD also found the production application running,
+MCU version 0x42 and all four confirmed radar defaults; firmware is in internal
+flash and survives removal of power. A later missing HA device entry required
+recommissioning; it was not evidence that application flash had been erased.
+
+
+Production v9 is installed through J-Link. The initial attempt stopped on an
+SWD parity/readback error and was not accepted. Recovery used the verified
+pre-update v8 snapshot, backed up each current target page, skipped matching
+pages and verified all 39 pages. A complete application readback matched all
+286628 bytes, SHA256 `9d863eec806f77faa55515153674f7c30ea994308ec65546d88f67b9ca9b2924`.
+Factory USERDATA/DEVINFO remained byte-identical to the original backups.
+The production ELF contains no diagnostic mailbox.
+
+The final real-MCU/relay suite passed all eight checks: installed version and
+binding, above/equal/below lux gating, brightness feedback latch, duplicate
+suppression, zero bypass, unknown lux, delayed-Off cancellation, and restoration
+of the original occupancy/lux sources and radar defaults. The test primes a
+changed sensitivity first because writing an already confirmed value no longer
+forces a duplicate MCU report. HA stayed free of a control automation.
+After HA restart, the requested manufacturer/model and quirk still match,
+24 device registry entries remain, and removed technical controls did not
+reappear. Live ZHA reports Router; the build has six end-device child slots.
+
+After physical pairing/rejoin, fresh device reads confirmed known occupancy 1
+and the bound relay On, exactly one endpoint 1 On/Off binding, enabled control,
+DP1 enum 1/0, DP104 illuminance, zero threshold/delay and radar defaults 8/0/525/100.
+No HA control automation was enabled. NVM failures and RX-ring overflow were 0;
+the debug-session UART error counter was 1. UI limits were verified as 0–9.5 m
+with 0.01 m steps and presence sensitivity 0–10 with 0.1 steps. The hidden master
+toggle stayed removed while the firmware's enable attribute remained true.
+
+
 ## Single-endpoint illuminance revision (v7)
 
 The current firmware exposes only source endpoint 1. The On illuminance threshold

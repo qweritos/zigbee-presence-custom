@@ -15,11 +15,10 @@ into a directory with `sdk/`, `gcc/arm-gnu-toolchain-12.3.rel1-x86_64-arm-none-e
 
 ```
 make test
-python3 scripts/build.py --tools /path/to/tools --profile generic --version 7 --force-generation
-python3 scripts/build.py --tools /path/to/tools --profile ztc6ggyl --version 7 --force-generation
+python3 scripts/build.py --tools /path/to/tools --profile zy-m100 --version 9 --force-generation
 python3 scripts/build.py --tools /path/to/tools --bootloader --force-generation
 python3 scripts/build_loader.py --tools /path/to/tools
-python3 tests/sdk_ota_size_check.py build/ztc6ggyl/patches/ota-client.c
+python3 tests/sdk_ota_size_check.py build/zy-m100/patches/ota-client.c
 ```
 
 `build/` contains generation/compile logs, generated sources, and a manifest.
@@ -52,7 +51,8 @@ RAM programmer is `build/loader/loader.bin`. The programmer compiles the exact
 part's Silicon Labs MSC routines instead of using another family's flash
 algorithm. `scripts/swd.py flash --help` lists the required private-backup,
 exact-IEEE and image arguments. First conversion needs `--initialize-nvm`.
-Use OTA for subsequent application updates and preserve network/configuration storage.
+Subsequent updates can use OTA or J-Link. Preserve network/configuration storage;
+omit `--initialize-nvm` on an update.
 
 For diagnostic builds, `scripts/debug.py` resolves its mailbox from the exact
 ELF and checks the physical target IEEE. It supports pairing, input injection,
@@ -69,3 +69,9 @@ storage/transport fixtures for shrinking, growing, partial and reused cached
 images. The unmodified SDK fails those size cases; the patched copy passes.
 For recovery from a failed staged image, `swd.py flash --clear-ota` invalidates
 only the staged GBL prefix and end-of-slot OTA metadata, preserving network NVM.
+
+J-Link transport reads use 1 KiB chunks with bounded retries. A transient SWD
+parity error during a read/poll is retried; an exhausted read still aborts
+verification and leaves a failed flash halted. `--speed 25` or `--speed 50` before
+the `swd.py` subcommand can select a slower probe clock (default 100 kHz).
+A transport error is never treated as a successful readback.

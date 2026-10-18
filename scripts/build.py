@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--tools', type=Path, default=Path(os.environ.get('BRIDGE_TOOLS', ROOT / '.tools')))
-    p.add_argument('--profile', choices=['generic', 'ztc6ggyl'], default='generic')
+    p.add_argument('--profile', choices=['zy-m100'], default='zy-m100')
     p.add_argument('--force-generation', action='store_true', help='Diagnostic SLC override; does not bypass compilation')
     p.add_argument('--generate-only', action='store_true')
     p.add_argument('--debug-swd', action='store_true', help='Include RAM-only pairing/test mailbox')
@@ -74,8 +74,8 @@ def main():
         return
     text = (ROOT/'config/bridge.slcp').read_text()
     text = re.sub(r'path: ([^},\n]+)', lambda m: 'path: '+str((ROOT/'config'/m[1].strip()).resolve()), text)
-    if args.profile == 'ztc6ggyl':
-        text += '  - name: BRIDGE_PROFILE_ZTC6GGYL\n    value: "1"\n'
+    if args.profile == 'zy-m100':
+        text += '  - name: BRIDGE_PROFILE_ZY_M100\n    value: "1"\n'
     if args.debug_swd:
         text += '  - name: BRIDGE_ENABLE_DEBUG\n    value: "1"\n'
     text=text.replace('FIRMWARE_VERSION, value: 1}',f'FIRMWARE_VERSION, value: {args.version}'+'}')
@@ -127,11 +127,11 @@ def main():
     run([sys.executable,ROOT/'scripts/package.py',binary,'--version',str(args.version),
          '--output',out/'ota'],'package')
     ota=out/'ota/bridge.ota';data=ota.read_bytes()
-    model='TuyaMCU-Bridge-ZTC6' if args.profile=='ztc6ggyl' else 'TuyaMCU-Bridge'
+    model='ZY-M100'
     index={'firmwares':[{'file_version':args.version,'file_size':len(data),
         'manufacturer_id':65535,'image_type':19779,'path':'bridge.ota',
         'checksum':'sha3-256:'+hashlib.sha3_256(data).hexdigest(),
-        'manufacturer_names':['OpenZigbee-MCU'],'model_names':[model]}]}
+        'manufacturer_names':['www.andrey.wtf'],'model_names':[model]}]}
     (out/'ota/index.json').write_text(json.dumps(index,indent=2)+'\n')
     artifacts=[]
     for file in [elf,binary,out/'ota/bridge.gbl',ota]:

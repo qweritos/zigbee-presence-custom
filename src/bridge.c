@@ -1,5 +1,6 @@
 #include "bridge.h"
 #include "core/routes.h"
+#include "core/radar_settings.h"
 #include "core/tuya_protocol.h"
 #include "hal/zigbee.h"
 #include "hal/zigbee_ota.h"
@@ -16,6 +17,7 @@
 #define RADAR_CLUSTER 0xfc20u
 #define ROUTE_KEY 0x3000u /* Application namespace; Zigbee tokens use 0x1xxxx. */
 #define GLOBAL_KEY 0x3010u
+#define RADAR_KEY 0x3020u
 #define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
 #define ATTR(id,type,flags,ptr) {id,type,flags,sizeof(*(ptr)),(uint8_t *)(ptr)}
 
@@ -33,13 +35,9 @@ static uint32_t last_uart_rx;
 static uint16_t sequence;
 static uint32_t now_ms(void) {return sl_sleeptimer_tick_to_ms(sl_sleeptimer_get_tick_count());}
 static uint8_t zcl_version=8, app_version=1, stack_version=2, hw_version=1, power_source=4;
-static uint8_t manufacturer[]="\x0fOpenZigbee-MCU"; /* Fixed below at init using strlen. */
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
-static uint8_t model[]="\0TuyaMCU-Bridge-ZTC6";
-#else
-static uint8_t model[]="\0TuyaMCU-Bridge";
-#endif
-static uint8_t sw_build[]="\x05" "0.2.0";
+static uint8_t manufacturer[]="\0www.andrey.wtf";
+static uint8_t model[]="\0ZY-M100";
+static uint8_t sw_build[]="\x05" "0.3.0";
 static uint16_t revision=1;
 static uint32_t tx_queued, tx_delivered, tx_failed, serial_tx_dropped, nvm_failed, dp_reports, version_rejected;
 static uint8_t last_dp, last_type, mcu_version, pid_seen;
@@ -49,6 +47,9 @@ static uint8_t illuminance_dp;
 static uint8_t net_status=0xff;
 static uint32_t next_join, next_handshake, next_bind_check;
 static uint8_t handshake_attempts;
+static uint32_t pairing_until;
+static bool pairing_active, pairing_wait_leave;
+static uint32_t network_acks;
 static bool previous_joined;
 #ifdef BRIDGE_ENABLE_DEBUG
 /* Only in explicitly requested diagnostic builds. No radio command exposes it. */
@@ -61,10 +62,12 @@ volatile struct {
     struct {uint32_t time,endpoint,state;} sent[8];
 } bridge_debug={.magic=0x4d435542,.version=1};
 #endif
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
-static uint8_t radar_dp[]={2,3,4,101,102};
-static uint32_t radar_value[5]={UINT32_MAX,UINT32_MAX,UINT32_MAX,UINT32_MAX,UINT32_MAX};
-static uint8_t radar_led=0xff;
+#ifdef BRIDGE_PROFILE_ZY_M100
+static const uint8_t radar_dp[]={2,3,4,102};
+static radar_settings radar_desired;
+static uint32_t next_radar_sync;
+static uint8_t radar_sync_attempts;
+static uint32_t radar_value[4]={UINT32_MAX,UINT32_MAX,UINT32_MAX,UINT32_MAX};
 static float distance_cm=NAN;
 #endif
 
@@ -105,13 +108,12 @@ static hal_zigbee_attribute uart_attrs[]={
     ATTR(0x0022,0x23,ATTR_READONLY,&uart_error_snapshot),
 };
 static hal_zigbee_attribute all_diag_attrs[ARRAY_SIZE(diag_attrs)+ARRAY_SIZE(uart_attrs)];
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
+#ifdef BRIDGE_PROFILE_ZY_M100
 static hal_zigbee_attribute radar_attrs[]={
     ATTR(0x0002,0x23,ATTR_WRITABLE,&radar_value[0]),
     ATTR(0x0003,0x23,ATTR_WRITABLE,&radar_value[1]),
     ATTR(0x0004,0x23,ATTR_WRITABLE,&radar_value[2]),
-    ATTR(0x0065,0x10,ATTR_WRITABLE,&radar_led),
-    ATTR(0x0066,0x23,ATTR_WRITABLE,&radar_value[4]),
+    ATTR(0x0066,0x23,ATTR_WRITABLE,&radar_value[3]),
     ATTR(0x0009,0x39,ATTR_READONLY,&distance_cm),
 };
 #endif
@@ -140,7 +142,7 @@ static void on_dp(void *ctx,uint8_t dp,uint8_t type,const uint8_t *v,size_t n) {
     if (dp && dp==illuminance_dp && type==2 && n==4) {
         for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++)
             occupancy_illuminance(&routes[i].control,true,value,now);
-        uint16_t measured=value?(uint16_t)fminf(65534.0f,10000.0f*log10f((float)value)+1.0f):0;
+        uint16_t measured=radar_illuminance_zcl(value);
         if (illuminance!=measured) {illuminance=measured;change(1,0x0400,0);}
     }
     for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++) {
@@ -151,12 +153,11 @@ static void on_dp(void *ctx,uint8_t dp,uint8_t type,const uint8_t *v,size_t n) {
         occupancy[i]=routes[i].control.occupied;
         if (old_known!=known[i] || old_state!=occupancy[i]) change(i+1,0x0406,0);
     }
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
+#ifdef BRIDGE_PROFILE_ZY_M100
     for (unsigned j=0;j<ARRAY_SIZE(radar_dp);j++) {
-        if (dp==radar_dp[j] && ((dp==101 && type==1 && n==1 && value<=1) || (dp!=101 && type==2 && n==4))) {
+        if (dp==radar_dp[j] && type==2 && n==4) {
             if (radar_value[j]!=value) {
                 radar_value[j]=value;
-                if (dp==101) radar_led=value;
                 change(1,RADAR_CLUSTER,dp);
             }
         }
@@ -168,14 +169,19 @@ static void on_dp(void *ctx,uint8_t dp,uint8_t type,const uint8_t *v,size_t n) {
 }
 static uint8_t current_network_status(void) {
     hal_zigbee_network_status_t n=hal_zigbee_get_network_status();
-    return n==HAL_ZIGBEE_NETWORK_JOINED?1:n==HAL_ZIGBEE_NETWORK_JOINING?3:0;
+    return n==HAL_ZIGBEE_NETWORK_JOINED?1:(pairing_active || n==HAL_ZIGBEE_NETWORK_JOINING)?3:0;
+}
+static void start_pairing(void) {
+    pairing_active=true;pairing_until=now_ms()+180000u;
+    pairing_wait_leave=hal_zigbee_get_network_status()==HAL_ZIGBEE_NETWORK_JOINED;
+    hal_zigbee_leave_network();next_join=now_ms()+1000;
 }
 static void on_frame(void *ctx,uint8_t version,uint16_t seq,uint8_t cmd,const uint8_t *p,size_t n) {
     (void)ctx;
     if (version!=2) {version_rejected++; return;}
     switch (cmd) {
     case 0x01: if (n) pid_seen=1; break;
-    case 0x05: case 0x06: {
+    case 0x05: case 0x06: case 0x2c: {
         uint8_t ok=tuya_decode_dps(p,n,on_dp,NULL)?1:0;
         serial_send(seq,cmd,&ok,1);
         break;
@@ -183,10 +189,11 @@ static void on_frame(void *ctx,uint8_t version,uint16_t seq,uint8_t cmd,const ui
     case 0x03:
         if (n==1 && p[0]<=1) {
             serial_send(seq,cmd,NULL,0);
-            if (p[0]==1) {hal_zigbee_leave_network();next_join=now_ms()+1000;}
+            if (p[0]==1) start_pairing();
             /* A short MCU reset request is acknowledged without erasing routes. */
         }
         break;
+    case 0x02: if (!n) network_acks++; break;
     case 0x0b: if (n==1) mcu_version=p[0]; break;
     case 0x20: {
         uint8_t status=current_network_status();serial_send(seq,cmd,&status,1);break;
@@ -294,20 +301,21 @@ uint8_t bridge_attribute_write(uint8_t ep,uint16_t cluster,uint16_t attr,const u
             occupancy_illuminance(&routes[i].control,false,0,now_ms());
         return SL_ZIGBEE_ZCL_STATUS_SUCCESS;
     }
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
+#ifdef BRIDGE_PROFILE_ZY_M100
     if (ep==1 && cluster==RADAR_CLUSTER) {
-        uint32_t value=0;uint8_t type=2;
-        if (attr==101 && size==1) {value=p[0];type=1;if (value>1) return SL_ZIGBEE_ZCL_STATUS_INVALID_VALUE;}
-        else if (size==4 && (attr==2 || attr==3 || attr==4 || attr==102)) {
-            memcpy(&value,p,4);
-            if ((attr==2 && (value<1 || value>10)) || (attr==102 && value>100) ||
-                ((attr==3 || attr==4) && value>950)) return SL_ZIGBEE_ZCL_STATUS_INVALID_VALUE;
-        } else return SL_ZIGBEE_ZCL_STATUS_INVALID_VALUE;
-        uint8_t dp[8]={(uint8_t)attr,type,0,(type==1)?1:4,0,0,0,0};
-        unsigned n=type==1?1:4;
-        for (unsigned j=0;j<n;j++) dp[4+j]=value>>(8*(n-j-1));
-        /* MCU reports establish actual state; do not optimistically overwrite it. */
-        return request(4,dp,4+n)?0xfe:SL_ZIGBEE_ZCL_STATUS_FAILURE;
+        if (size!=4) return SL_ZIGBEE_ZCL_STATUS_INVALID_DATA_TYPE;
+        radar_settings desired=radar_desired;unsigned i;
+        for (i=0;i<ARRAY_SIZE(radar_dp) && radar_dp[i]!=attr;i++) {}
+        if (i==ARRAY_SIZE(radar_dp)) return SL_ZIGBEE_ZCL_STATUS_UNSUPPORTED_ATTRIBUTE;
+        memcpy(&desired.value[i],p,4);
+        if (!radar_settings_valid(&desired)) return SL_ZIGBEE_ZCL_STATUS_INVALID_VALUE;
+        uint8_t data[RADAR_SETTINGS_SIZE];radar_settings_encode(&desired,data);
+        if (nvm3_writeData(nvm3_defaultHandle,RADAR_KEY,data,sizeof(data))!=ECODE_NVM3_OK) {
+            nvm_failed++;return SL_ZIGBEE_ZCL_STATUS_FAILURE;
+        }
+        radar_desired=desired;radar_sync_attempts=0;next_radar_sync=now_ms();
+        /* Desired settings persist; only confirmed MCU reports change telemetry. */
+        return 0xfe;
     }
 #endif
     return 0xff; /* Delegate standard cluster writes to the SDK/HAL. */
@@ -318,8 +326,12 @@ void bridge_init(void) {
     model[0]=strlen((char *)model+1);
     /* Hex escapes must be separated from following numeric text. */
     sw_build[0]=5;
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
+#ifdef BRIDGE_PROFILE_ZY_M100
     illuminance_dp=104;
+    radar_desired=radar_settings_defaults();
+    uint8_t radar_saved[RADAR_SETTINGS_SIZE];radar_settings saved_settings;
+    if (nvm3_readData(nvm3_defaultHandle,RADAR_KEY,radar_saved,sizeof(radar_saved))==ECODE_NVM3_OK &&
+        radar_settings_decode(&saved_settings,radar_saved,sizeof(radar_saved))) radar_desired=saved_settings;
 #endif
     nvm3_readData(nvm3_defaultHandle,GLOBAL_KEY,&illuminance_dp,1);
     /* Migrate the former multi-endpoint layout without touching EP1 or network tokens. */
@@ -336,7 +348,7 @@ void bridge_init(void) {
     memcpy(all_diag_attrs+ARRAY_SIZE(diag_attrs),uart_attrs,sizeof(uart_attrs));
     for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++) {
         route_config c={.type=4,.active_value=1};
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
+#ifdef BRIDGE_PROFILE_ZY_M100
         if (i==0) {c.enabled=1;c.dp=1;}
 #endif
         uint8_t encoded[BRIDGE_CONFIG_SIZE];route_config saved;
@@ -371,7 +383,7 @@ void bridge_init(void) {
                 .attribute_count=ARRAY_SIZE(lux_attrs),.attributes=lux_attrs};
             clusters[i][n++]=(hal_zigbee_cluster){.cluster_id=DIAG_CLUSTER,.is_server=1,
                 .attribute_count=ARRAY_SIZE(all_diag_attrs),.attributes=all_diag_attrs};
-#ifdef BRIDGE_PROFILE_ZTC6GGYL
+#ifdef BRIDGE_PROFILE_ZY_M100
             clusters[i][n++]=(hal_zigbee_cluster){.cluster_id=RADAR_CLUSTER,.is_server=1,
                 .attribute_count=ARRAY_SIZE(radar_attrs),.attributes=radar_attrs};
 #endif
@@ -382,6 +394,9 @@ void bridge_init(void) {
     }
     hal_zigbee_init(endpoints,BRIDGE_ROUTE_COUNT);
     mcu_uart_init();
+    if (hal_zigbee_get_network_status()==HAL_ZIGBEE_NETWORK_NOT_JOINED) {
+        pairing_active=true;pairing_until=now_ms()+180000u;
+    }
 }
 void bridge_process(void) {
     uint32_t now=now_ms();uint8_t b;
@@ -392,7 +407,7 @@ void bridge_process(void) {
     uint32_t command=bridge_debug.command;
     if (command) {
         bridge_debug.command=0;bridge_debug.status=1;
-        if (command==1) {hal_zigbee_leave_network();next_join=now+1000;}
+        if (command==1) start_pairing();
         else if (command==2) {
             uint8_t dp[8]={(uint8_t)bridge_debug.dp,(uint8_t)bridge_debug.type,0,0};
             unsigned n=(dp[1]==1 || dp[1]==4)?1:4;
@@ -416,6 +431,8 @@ void bridge_process(void) {
             hal_zigbee_cmd query={.endpoint=bridge_debug.endpoint,.profile_id=0x0104,.cluster_id=6,
                 .command_id=0,.cluster_specific=0,.disable_default_rsp=1,.payload=attr,.payload_len=2};
             if (hal_zigbee_send_cmd_to_bindings(&query)!=HAL_ZIGBEE_OK) bridge_debug.status=5;
+        } else if (command==5) {
+            const uint8_t join=1;on_frame(NULL,2,0xffef,3,&join,1);
         } else bridge_debug.status=4;
     }
 #endif
@@ -424,6 +441,9 @@ void bridge_process(void) {
     for (unsigned i=0;i<256 && mcu_uart_read(&b);i++) {
         last_uart_rx=now;tuya_parser_feed(&parser,b,on_frame,NULL);
     }
+    if (hal_zigbee_get_network_status()!=HAL_ZIGBEE_NETWORK_JOINED) pairing_wait_leave=false;
+    if (pairing_active && ((int32_t)(now-pairing_until)>=0 ||
+        (!pairing_wait_leave && hal_zigbee_get_network_status()==HAL_ZIGBEE_NETWORK_JOINED))) pairing_active=false;
     uint8_t status=current_network_status();bool joined=status==1;
     if (status!=net_status) {if (request(2,&status,1)) net_status=status;}
     if (joined && !previous_joined) {
@@ -431,14 +451,25 @@ void bridge_process(void) {
         hal_zigbee_send_announce();
     }
     previous_joined=joined;
-    if (!status && (int32_t)(now-next_join)>=0) {
+    if (pairing_active && !joined && (int32_t)(now-next_join)>=0) {
         next_join=now+30000;hal_zigbee_start_network_steering();
     }
     if ((int32_t)(now-next_handshake)>=0 && handshake_attempts<3) {
         if (!pid_seen) request(1,NULL,0);
-        request(0x0b,NULL,0);request(0x28,NULL,0);
+        request(0x0b,NULL,0);
+        const uint8_t query[]={1,2,3,4,9,102,104};request(0x28,query,sizeof(query));
         handshake_attempts++;next_handshake=now+3000;
     }
+#ifdef BRIDGE_PROFILE_ZY_M100
+    if (pid_seen && radar_sync_attempts<10 && (int32_t)(now-next_radar_sync)>=0) {
+        for (unsigned i=0;i<ARRAY_SIZE(radar_dp);i++) if (radar_value[i]!=radar_desired.value[i]) {
+            uint32_t value=radar_desired.value[i];
+            uint8_t dp[]={radar_dp[i],2,0,4,value>>24,value>>16,value>>8,value};
+            request(4,dp,sizeof(dp));
+        }
+        radar_sync_attempts++;next_radar_sync=now+3000;
+    }
+#endif
     if ((int32_t)(now-next_bind_check)>=0) {scan_bindings(now);next_bind_check=now+1000;}
     for (unsigned i=0;i<BRIDGE_ROUTE_COUNT;i++) occupancy_tick(&routes[i].control,now,send_route,(void *)(uintptr_t)i);
 }

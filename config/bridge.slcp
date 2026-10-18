@@ -1,6 +1,6 @@
 # Silicon Labs Project Configuration Tools: slcp, v0, Component selection file.
 project_name: mcu_bridge
-description: Configurable Tuya MCU to Zigbee binding bridge
+description: Zigbee presence sensor firmware with direct endpoint binding
 category: Zigbee Application
 package: Zigbee
 quality: experimental
@@ -13,6 +13,7 @@ source:
 - {path: ../src/core/tuya_protocol.c}
 - {path: ../src/core/occupancy_control.c}
 - {path: ../src/core/routes.c}
+- {path: ../src/core/radar_settings.c}
 include:
 - {path: ../src}
 sdk: {id: simplicity_sdk, version: 2025.6.2}
