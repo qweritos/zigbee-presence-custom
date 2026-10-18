@@ -87,6 +87,16 @@ with 0.01 m steps and presence sensitivity 0–10 with 0.1 steps. The hidden mas
 toggle stayed removed while the firmware's enable attribute remained true.
 
 
+After recommissioning, HA displayed detected while the MCU had sent clear and
+a fresh Zigbee Occupancy Sensing read returned 0. That read immediately cleared
+HA's cached state. ZHA Reconfigure restored coordinator reporting. A separate
+real-MCU sensitivity-input test then observed HA Off→On→Off through REST cached
+entity state alone, with no occupancy attribute reads. The same unsolicited
+reporting test passed again after a radio reset. The user's current sensitivity 3
+and other settings were preserved; original DP1 mapping, delay and lux limit
+were restored. No firmware polling or HA control automation was added.
+
+
 ## Single-endpoint illuminance revision (v7)
 
 The current firmware exposes only source endpoint 1. The On illuminance threshold

@@ -113,3 +113,10 @@ Upgrading from the earlier four-endpoint firmware preserves endpoint 1 settings
 and bindings, defaults its new lux limit to 0, and deletes retired endpoints 2–4
 settings and bindings. Reinterview the device after upgrading and remove the
 retired entities from the HA registry. The current quirk exposes only endpoint 1.
+
+After changing the device profile/quirk or re-pairing an existing HA device,
+run **Reconfigure** in ZHA to restore coordinator attribute reporting. A fresh
+Occupancy Sensing read can update HA once even when unsolicited reports are
+missing. Verify On and Off updates through HA's cached entity state. Standard
+occupancy/illuminance reporting bindings are separate from the peer On/Off
+control binding and require no HA control automation.
